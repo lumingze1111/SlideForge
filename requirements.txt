@@ -1,0 +1,5 @@
+langchain-openai>=0.1.0
+langgraph>=0.1.0
+langchain-core>=0.2.0
+pydantic>=2.0.0
+beautifulsoup4>=4.12.0
