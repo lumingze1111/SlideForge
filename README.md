@@ -2,29 +2,79 @@
 
 A LangChain-powered multi-agent system for generating design-compliant presentation slides. Three specialized ReAct agents collaborate to enforce a formal design system — color theory, typographic scale, 8px spacing grid, and WCAG contrast — before a single pixel of HTML is written.
 
-## Architecture
+## Full Pipeline
 
 ```
-Topic + Audience
-       │
-       ▼
-┌─────────────────┐
-│   Style Agent   │  Selects color scheme & visual style via ReAct tool loop
-│  (3 tools)      │  → list_schemes / get_scheme_detail / check_contrast
-└────────┬────────┘
-         │  StyleDecision
-         ▼
-┌─────────────────┐
-│  Design Agent   │  Plans pixel-precise layout regions & typography
-│  (3 tools)      │  → get_layout_spec / get_typography_spec / suggest_element_size
-└────────┬────────┘
-         │  LayoutDecision
-         ▼
-┌─────────────────┐
-│  Review Agent   │  Audits HTML slides against the design system
-│  (local + LLM)  │  → scores 0-100, flags violations, suggests fixes
-└─────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         INPUT                                            │
+│          Topic (str)  +  Audience (str)  +  Slide description (str)     │
+└───────────────────────────────┬──────────────────────────────────────────┘
+                                │
+                                ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│  STAGE 1 — Style Agent  (LangChain ReAct loop)                          │
+│                                                                          │
+│   list_schemes(mood)  ──▶  get_scheme_detail(name)  ──▶  check_contrast │
+│                                                                          │
+│   Decides:  scheme_name · visual_style · heading_font · body_font        │
+│   Output:   StyleDecision                                                │
+└───────────────────────────────┬──────────────────────────────────────────┘
+                                │ StyleDecision
+                                ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│  STAGE 2 — Design Agent  (LangChain ReAct loop)                         │
+│                                                                          │
+│   get_typography_spec()  ──▶  get_layout_spec(type)                     │
+│   ──▶  suggest_element_size(content_type, priority)  (×N)               │
+│                                                                          │
+│   Decides:  layout_type · regions {x,y,w,h} · font_sizes · spacing      │
+│   Output:   LayoutDecision                                               │
+└───────────────────────────────┬──────────────────────────────────────────┘
+                                │ StyleDecision + LayoutDecision
+                                ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│  STAGE 3 — HTML Generator  (deterministic, no LLM)                      │
+│                                                                          │
+│   Applies color tokens, pixel-precise region coords, allowed font        │
+│   sizes (from type scale), and 8px-grid spacing to produce clean HTML   │
+│                                                                          │
+│   Output:  slide_XX.html  (guaranteed compliant with design system)      │
+└───────────────────────────────┬──────────────────────────────────────────┘
+                                │ HTML string
+                                ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│  STAGE 4 — Review Agent  (local Python + LLM scoring)                   │
+│                                                                          │
+│   preprocess_html() — runs locally, no API call:                        │
+│     parse_html_structure · count_inline_styles · check_font_sizes       │
+│     check_spacing · check_contrast_html                                  │
+│          │                                                               │
+│          └──▶  compact text report  ──▶  LLM scores JSON                │
+│                                                                          │
+│   Output:  ReviewReport { passed, score/100, issues[], suggestions[] }  │
+└───────────────────────────────┬──────────────────────────────────────────┘
+                                │ score ≥ 70 → passed ✅
+                                ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│  EXPORT  —  html2pptx  (Node.js + Playwright + pptxgenjs)               │
+│                                                                          │
+│   node html2pptx_cli.js --html_dir slides/ --output deck.pptx           │
+│                                                                          │
+│   Output:  deck.pptx  (real OOXML, opens in PowerPoint / Keynote)       │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
+
+### Stage Summary
+
+| Stage | Driver | Key constraint enforced |
+|-------|--------|------------------------|
+| 1 · Style | ReAct agent | WCAG AA contrast ≥ 4.5:1 |
+| 2 · Design | ReAct agent | 8px spacing grid, type scale |
+| 3 · Generate | Deterministic template | Zero font/spacing violations |
+| 4 · Review | Local + LLM | Score ≥ 70 gate |
+| 5 · Export | Node CLI | Real PPTX (not PDF) |
+
+## Architecture
 
 ## Design System
 
