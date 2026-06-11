@@ -137,6 +137,35 @@ Requires Python ≥ 3.11.
 
 ## Quick Start
 
+### Option 1: AI-Generated Custom Design (Recommended)
+
+Let the AI agent generate 3-5 custom color schemes tailored to your topic, instead of using fixed templates:
+
+```python
+from langchain_openai import ChatOpenAI
+from slideforge.interactive import select_design_spec
+
+llm = ChatOpenAI(
+    base_url="https://api.deepseek.com",
+    api_key="YOUR_KEY",
+    model="deepseek-chat",
+    temperature=0.7,  # Higher creativity for unique proposals
+)
+
+# Interactive wizard with AI-powered design proposals
+spec = select_design_spec(
+    llm=llm,
+    topic="Quantum Computing Future",
+    audience="Tech researchers and investors"
+)
+
+print(spec.color_scheme.name)      # e.g., "量子紫光科技风"
+print(spec.color_scheme.primary)   # AI-generated primary color
+print(spec.visual_style)            # e.g., "bold"
+```
+
+### Option 2: Use Preset Templates
+
 ```python
 from langchain_openai import ChatOpenAI
 from slideforge.agents import run_style_agent, run_design_agent, run_review_agent
@@ -161,7 +190,7 @@ report = run_review_agent(llm, html_string)
 print(report.score, report.passed, report.issues)
 ```
 
-See `examples/quickstart.py` for a full walkthrough.
+See `examples/ai_propose_example.py` for AI-powered proposals and `examples/quickstart.py` for template-based workflow.
 
 ## Project Structure
 

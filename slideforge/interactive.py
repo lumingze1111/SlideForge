@@ -27,18 +27,78 @@ class DesignSpec:
 # 预设配色方案展示
 # ──────────────────────────────────────────────
 
-def _show_color_options() -> None:
+def _show_color_options(show_agent_option: bool = True) -> None:
     print("\n" + "═" * 56)
-    print("  可用配色方案")
+    print("  配色方案来源")
     print("═" * 56)
-    for i, (key, scheme) in enumerate(COLOR_SCHEMES.items(), 1):
-        print(f"  [{i}] {scheme.name:<12}  {scheme.description}")
-    print(f"  [{len(COLOR_SCHEMES)+1}] 自定义配色（手动输入色值）")
+    if show_agent_option:
+        print("  [1] AI 定制 — 根据主题生成 3-5 套专属配色（推荐）")
+        print("  [2] 预设方案 — 从 6 套通用配色中选择")
+        print("  [3] 手动输入 — 自定义色值")
+    else:
+        print("  预设配色方案：")
+        for i, (key, scheme) in enumerate(COLOR_SCHEMES.items(), 1):
+            print(f"    [{i}] {scheme.name:<12}  {scheme.description}")
+        print(f"    [{len(COLOR_SCHEMES)+1}] 自定义配色（手动输入色值）")
     print("═" * 56)
 
 
-def _pick_color_scheme() -> ColorScheme:
-    _show_color_options()
+def _pick_color_scheme(llm=None, topic: str = "", audience: str = "") -> tuple[ColorScheme, str]:
+    """
+    返回 (ColorScheme, visual_style)
+    如果用户选择 AI 定制，会同时返回推荐的视觉风格
+    """
+    _show_color_options(show_agent_option=(llm is not None and topic))
+
+    # 如果提供了 LLM 且有主题，显示 AI 定制选项
+    if llm and topic:
+        while True:
+            choice = input("请选择配色来源（1-3）：").strip()
+            if choice == "1":
+                # AI 定制
+                from slideforge.agents.propose_agent import run_propose_agent, pick_proposal
+                print("\n  ⏳ AI 正在根据主题生成定制方案...")
+                proposals = run_propose_agent(llm, topic, audience)
+                color_proposal = pick_proposal(proposals)
+
+                # 转换为 ColorScheme
+                scheme = ColorScheme(
+                    name=color_proposal.name,
+                    mood=ColorMood.MODERN,
+                    primary=color_proposal.primary,
+                    secondary=color_proposal.secondary,
+                    accent=color_proposal.accent,
+                    background=color_proposal.background,
+                    surface=color_proposal.surface,
+                    text_primary=color_proposal.text_primary,
+                    text_secondary=color_proposal.text_secondary,
+                    text_disabled=color_proposal.text_disabled,
+                    border=color_proposal.border,
+                    success="#4CAF50",
+                    warning="#FF9800",
+                    error="#F44336",
+                    description=color_proposal.reasoning,
+                )
+                return scheme, color_proposal.visual_style
+
+            elif choice == "2":
+                # 预设方案
+                _show_color_options(show_agent_option=False)
+                return _pick_from_presets(), ""
+
+            elif choice == "3":
+                # 手动输入
+                return _custom_color_scheme(), ""
+
+            print("  ✗ 无效输入，请重新选择")
+
+    # 没有 LLM，走原有预设流程
+    _show_color_options(show_agent_option=False)
+    return _pick_from_presets(), ""
+
+
+def _pick_from_presets() -> ColorScheme:
+    """从 6 套预设中选择"""
     keys = list(COLOR_SCHEMES.keys())
     while True:
         raw = input("请选择配色方案编号：").strip()
@@ -170,16 +230,37 @@ def _pick_font(label: str, options: list[tuple[str, str]]) -> str:
 # 公开接口
 # ──────────────────────────────────────────────
 
-def select_design_spec() -> DesignSpec:
+def select_design_spec(llm=None, topic: str = "", audience: str = "") -> DesignSpec:
     """
     交互式收集用户设计偏好，返回完整 DesignSpec。
     每个维度都提供预设选项 + 自定义入口。
+
+    Args:
+        llm: LangChain 聊天模型（可选）。提供后会启用 AI 定制方案
+        topic: 幻灯片主题（可选）
+        audience: 目标受众（可选）
     """
     print("\n🎨  SlideForge 设计规范配置向导")
+    if topic:
+        print(f"    主题: {topic}")
+    if audience:
+        print(f"    受众: {audience}")
 
-    color = _pick_color_scheme()
+    color, ai_style = _pick_color_scheme(llm, topic, audience)
     layout = _pick_layout()
-    style = _pick_visual_style()
+
+    # 如果 AI 已推荐视觉风格，询问是否接受
+    if ai_style:
+        print(f"\n  💡 AI 推荐视觉风格: {ai_style}")
+        accept = input("  是否采用？(Y/n): ").strip().lower()
+        if accept in ("", "y", "yes"):
+            style = ai_style
+            print(f"  ✓ 已采用 AI 推荐风格")
+        else:
+            style = _pick_visual_style()
+    else:
+        style = _pick_visual_style()
+
     heading_font = _pick_font("标题字体", _HEADING_FONTS)
     body_font = _pick_font("正文字体", _BODY_FONTS)
 
