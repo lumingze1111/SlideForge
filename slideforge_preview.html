@@ -8,407 +8,531 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
     font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
-    background: #1a1a1a;
+    background: #111827;
     color: #e0e0e0;
-    padding: 40px 20px;
+    padding: 40px 20px 120px;
 }
 .container { max-width: 1400px; margin: 0 auto; }
 h1 {
     text-align: center;
-    font-size: 32px;
-    margin-bottom: 40px;
+    font-size: 28px;
+    margin-bottom: 8px;
     color: #fff;
 }
-.slide-card {
-    background: #2a2a2a;
-    border-radius: 12px;
-    padding: 30px;
+.subtitle {
+    text-align: center;
+    font-size: 14px;
+    color: #6b7280;
     margin-bottom: 40px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+.slide-card {
+    background: #1f2937;
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 32px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    border: 3px solid transparent;
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+    position: relative;
+}
+.slide-card:hover {
+    border-color: #4b83ff;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(75,131,255,0.25);
+}
+.slide-card.selected {
+    border-color: #4ade80;
+    box-shadow: 0 0 0 4px rgba(74,222,128,0.2), 0 8px 32px rgba(0,0,0,0.5);
+}
+.selected-badge {
+    display: none;
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: #4ade80;
+    color: #111827;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 4px 14px;
+    border-radius: 20px;
+    z-index: 10;
+}
+.slide-card.selected .selected-badge {
+    display: inline-block;
 }
 .slide-meta {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
 }
 .slide-title {
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 600;
     color: #fff;
 }
 .slide-badge {
     display: inline-block;
-    padding: 6px 16px;
-    background: #4a9eff;
-    color: #fff;
+    padding: 4px 14px;
+    background: #374151;
+    color: #9ca3af;
     border-radius: 20px;
-    font-size: 14px;
+    font-size: 13px;
+}
+.slide-preview-wrapper {
+    width: 100%;
+    overflow-x: auto;
 }
 .slide-preview {
     width: 1280px;
     height: 720px;
-    margin: 20px auto;
+    margin: 0 auto;
     border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.7);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.6);
     position: relative;
+    pointer-events: none;
 }
 .slide-info {
     display: flex;
     gap: 20px;
-    margin-top: 20px;
-    font-size: 14px;
+    margin-top: 16px;
+    font-size: 13px;
+    align-items: center;
 }
-.color-palette {
-    display: flex;
-    gap: 8px;
-}
+.color-palette { display: flex; gap: 6px; flex-wrap: wrap; }
 .color-chip {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     border-radius: 6px;
-    border: 2px solid rgba(255,255,255,0.1);
+    border: 2px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
 }
-.reasoning {
-    flex: 1;
-    color: #999;
-    line-height: 1.6;
+.reasoning { flex: 1; color: #9ca3af; line-height: 1.6; }
+
+/* 底部固定确认栏 */
+.confirm-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #1f2937;
+    border-top: 1px solid #374151;
+    padding: 16px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 100;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+}
+.confirm-hint {
+    font-size: 14px;
+    color: #9ca3af;
+}
+.confirm-hint span {
+    color: #4ade80;
+    font-weight: 600;
+}
+.confirm-btn {
+    background: #4ade80;
+    color: #111827;
+    border: none;
+    padding: 12px 40px;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+}
+.confirm-btn:hover { background: #22c55e; transform: scale(1.03); }
+.confirm-btn:disabled {
+    background: #374151;
+    color: #6b7280;
+    cursor: not-allowed;
+    transform: none;
 }
 </style>
 </head>
 <body>
 <div class="container">
 <h1>🎨 SlideForge 配色方案预览</h1>
+<p class="subtitle">点击方案卡片选择，然后点击底部「确认方案」按钮</p>
 
 
-<div class="slide-card">
+<div class="slide-card" data-index="0" onclick="selectCard(this)">
+    <div class="selected-badge">✓ 已选择</div>
     <div class="slide-meta">
-        <div class="slide-title">1. AI 创世渐变 - 未来感融合系</div>
+        <div class="slide-title">1. 智创光谱渐变 - 未来创意系</div>
         <div class="slide-badge">bold</div>
     </div>
-
-    <div class="slide-preview" style="background: linear-gradient(135deg, #0d0d2b 0%, #1a1a3e 50%, #2d1b4e 100%); color: #e2e8f0;">
-        <!-- 顶部标题区 -->
-        <div style="padding: 60px 80px 0 80px;">
-            <h2 style="font-size: 48px; font-weight: 700; color: #7c3aed; margin-bottom: 16px;">
-                AI 与艺术的融合
-            </h2>
-            <div style="width: 120px; height: 4px; background: #f59e0b; margin-bottom: 40px;"></div>
-        </div>
-
-        <!-- 内容区 -->
-        <div style="padding: 0 80px;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
-                <!-- 左栏 -->
-                <div>
-                    <h3 style="font-size: 28px; color: #e2e8f0; margin-bottom: 20px; font-weight: 600;">
-                        核心观点
-                    </h3>
-                    <ul style="list-style: none; padding: 0;">
-                        <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #94a3b8;">
-                            <span style="position: absolute; left: 0; color: #f59e0b;">▸</span>
-                            主题核心要素一
-                        </li>
-                        <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #94a3b8;">
-                            <span style="position: absolute; left: 0; color: #f59e0b;">▸</span>
-                            主题核心要素二
-                        </li>
-                        <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #94a3b8;">
-                            <span style="position: absolute; left: 0; color: #f59e0b;">▸</span>
-                            主题核心要素三
-                        </li>
-                    </ul>
-                </div>
-
-                <!-- 右栏 -->
-                <div style="background: #1e293b; padding: 32px; border-radius: 12px; border: 2px solid #475569;">
-                    <h4 style="font-size: 22px; color: #7c3aed; margin-bottom: 16px; font-weight: 600;">
-                        关键数据
-                    </h4>
-                    <div style="margin-bottom: 20px;">
-                        <div style="font-size: 48px; font-weight: 700; color: #f59e0b;">100%</div>
-                        <div style="font-size: 16px; color: #94a3b8;">主题相关指标</div>
+    <div class="slide-preview-wrapper">
+        <div class="slide-preview" style="background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%); color: #ffffff;">
+            <div style="padding: 60px 80px 0 80px;">
+                <h2 style="font-size: 48px; font-weight: 700; color: #bb86fc; margin-bottom: 16px;">
+                    AI与艺术的融合：探讨人工智能如何改变创意产业
+                </h2>
+                <div style="width: 120px; height: 4px; background: #ff7597; margin-bottom: 40px;"></div>
+            </div>
+            <div style="padding: 0 80px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+                    <div>
+                        <h3 style="font-size: 28px; color: #ffffff; margin-bottom: 20px; font-weight: 600;">核心观点</h3>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #b0b0b0;">
+                                <span style="position: absolute; left: 0; color: #ff7597;">▸</span>主题核心要素一
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #b0b0b0;">
+                                <span style="position: absolute; left: 0; color: #ff7597;">▸</span>主题核心要素二
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #b0b0b0;">
+                                <span style="position: absolute; left: 0; color: #ff7597;">▸</span>主题核心要素三
+                            </li>
+                        </ul>
                     </div>
-                    <div style="font-size: 14px; color: #94a3b8; line-height: 1.6;">
-                        深邃紫蓝渐变背景象征AI的深度与未知，亮紫色主色与青色辅色代表技术与艺术的碰撞，金色点缀突显创造力。
+                    <div style="background: #1e1e2e; padding: 32px; border-radius: 12px; border: 2px solid #3a3a4e;">
+                        <h4 style="font-size: 22px; color: #bb86fc; margin-bottom: 16px; font-weight: 600;">关键数据</h4>
+                        <div style="margin-bottom: 20px;">
+                            <div style="font-size: 48px; font-weight: 700; color: #ff7597;">100%</div>
+                            <div style="font-size: 16px; color: #b0b0b0;">主题相关指标</div>
+                        </div>
+                        <div style="font-size: 14px; color: #b0b0b0; line-height: 1.6;">深色宇宙背景搭配紫蓝渐变，象征AI的理性与艺术的感性融合，高对比突显创意能量。</div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-
     <div class="slide-info">
         <div class="color-palette">
-            <div class="color-chip" style="background: linear-gradient(135deg, #0d0d2b 0%, #1a1a3e 50%, #2d1b4e 100%);" title="gradient_bg: linear-gradient(135deg, #0d0d2b 0%, #1a1a3e 50%, #..."></div>
-            <div class="color-chip" style="background: #7c3aed;" title="primary: #7c3aed"></div>
-            <div class="color-chip" style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);" title="primary_gradient: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)..."></div>
-            <div class="color-chip" style="background: #06b6d4;" title="secondary: #06b6d4"></div>
-            <div class="color-chip" style="background: #f59e0b;" title="accent: #f59e0b"></div>
-            <div class="color-chip" style="background: #fbbf24;" title="accent_light: #fbbf24"></div>
-            <div class="color-chip" style="background: #e2e8f0;" title="text_primary: #e2e8f0"></div>
-            <div class="color-chip" style="background: #94a3b8;" title="text_secondary: #94a3b8"></div>
-            <div class="color-chip" style="background: #1e293b;" title="surface: #1e293b"></div>
-            <div class="color-chip" style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%);" title="card_bg: linear-gradient(135deg, #1e293b 0%, #334155 100%)..."></div>
-            <div class="color-chip" style="background: #475569;" title="border: #475569"></div>
+            <div class="color-chip" style="background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);" title="gradient_bg: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #..."></div>
+<div class="color-chip" style="background-color: #bb86fc;" title="primary: #bb86fc"></div>
+<div class="color-chip" style="background: linear-gradient(135deg, #bb86fc 0%, #03dac6 100%);" title="primary_gradient: linear-gradient(135deg, #bb86fc 0%, #03dac6 100%)"></div>
+<div class="color-chip" style="background-color: #03dac6;" title="secondary: #03dac6"></div>
+<div class="color-chip" style="background-color: #ff7597;" title="accent: #ff7597"></div>
+<div class="color-chip" style="background-color: #ffb3c6;" title="accent_light: #ffb3c6"></div>
+<div class="color-chip" style="background-color: #ffffff;" title="text_primary: #ffffff"></div>
+<div class="color-chip" style="background-color: #b0b0b0;" title="text_secondary: #b0b0b0"></div>
+<div class="color-chip" style="background-color: #666666;" title="text_disabled: #666666"></div>
+<div class="color-chip" style="background-color: #1e1e2e;" title="surface: #1e1e2e"></div>
+<div class="color-chip" style="background-color: #2a2a3e;" title="card_bg: #2a2a3e"></div>
+<div class="color-chip" style="background-color: #3a3a4e;" title="border: #3a3a4e"></div>
+
         </div>
         <div class="reasoning">
-            <strong>配色数量：</strong>11 个颜色
-            <br><strong>设计理由：</strong>深邃紫蓝渐变背景象征AI的深度与未知，亮紫色主色与青色辅色代表技术与艺术的碰撞，金色点缀突显创造力。
+            <strong>配色数量：</strong>12 个 &nbsp;|&nbsp;
+            <strong>设计理由：</strong>深色宇宙背景搭配紫蓝渐变，象征AI的理性与艺术的感性融合，高对比突显创意能量。
         </div>
     </div>
 </div>
 
 
-<div class="slide-card">
+<div class="slide-card" data-index="1" onclick="selectCard(this)">
+    <div class="selected-badge">✓ 已选择</div>
     <div class="slide-meta">
-        <div class="slide-title">2. 数字画布 - 柔和创意系</div>
-        <div class="slide-badge">minimalist</div>
-    </div>
-
-    <div class="slide-preview" style="background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); color: #0f172a;">
-        <!-- 顶部标题区 -->
-        <div style="padding: 60px 80px 0 80px;">
-            <h2 style="font-size: 48px; font-weight: 700; color: #2563eb; margin-bottom: 16px;">
-                AI 与艺术的融合
-            </h2>
-            <div style="width: 120px; height: 4px; background: #14b8a6; margin-bottom: 40px;"></div>
-        </div>
-
-        <!-- 内容区 -->
-        <div style="padding: 0 80px;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
-                <!-- 左栏 -->
-                <div>
-                    <h3 style="font-size: 28px; color: #0f172a; margin-bottom: 20px; font-weight: 600;">
-                        核心观点
-                    </h3>
-                    <ul style="list-style: none; padding: 0;">
-                        <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #475569;">
-                            <span style="position: absolute; left: 0; color: #14b8a6;">▸</span>
-                            主题核心要素一
-                        </li>
-                        <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #475569;">
-                            <span style="position: absolute; left: 0; color: #14b8a6;">▸</span>
-                            主题核心要素二
-                        </li>
-                        <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #475569;">
-                            <span style="position: absolute; left: 0; color: #14b8a6;">▸</span>
-                            主题核心要素三
-                        </li>
-                    </ul>
-                </div>
-
-                <!-- 右栏 -->
-                <div style="background: #ffffff; padding: 32px; border-radius: 12px; border: 2px solid #cbd5e1;">
-                    <h4 style="font-size: 22px; color: #2563eb; margin-bottom: 16px; font-weight: 600;">
-                        关键数据
-                    </h4>
-                    <div style="margin-bottom: 20px;">
-                        <div style="font-size: 48px; font-weight: 700; color: #14b8a6;">100%</div>
-                        <div style="font-size: 16px; color: #475569;">主题相关指标</div>
-                    </div>
-                    <div style="font-size: 14px; color: #475569; line-height: 1.6;">
-                        浅色背景搭配蓝紫渐变主色，营造干净数字画布感，粉色辅色与青色点缀体现艺术创作的灵感和多样性。
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="slide-info">
-        <div class="color-palette">
-            <div class="color-chip" style="background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);" title="gradient_bg: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)..."></div>
-            <div class="color-chip" style="background: #2563eb;" title="primary: #2563eb"></div>
-            <div class="color-chip" style="background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);" title="primary_gradient: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)..."></div>
-            <div class="color-chip" style="background: #d946ef;" title="secondary: #d946ef"></div>
-            <div class="color-chip" style="background: #14b8a6;" title="accent: #14b8a6"></div>
-            <div class="color-chip" style="background: #5eead4;" title="accent_light: #5eead4"></div>
-            <div class="color-chip" style="background: #0f172a;" title="text_primary: #0f172a"></div>
-            <div class="color-chip" style="background: #475569;" title="text_secondary: #475569"></div>
-            <div class="color-chip" style="background: #ffffff;" title="surface: #ffffff"></div>
-            <div class="color-chip" style="background: radial-gradient(circle, #ffffff 0%, #f1f5f9 100%);" title="card_bg: radial-gradient(circle, #ffffff 0%, #f1f5f9 100%)..."></div>
-            <div class="color-chip" style="background: #cbd5e1;" title="border: #cbd5e1"></div>
-        </div>
-        <div class="reasoning">
-            <strong>配色数量：</strong>11 个颜色
-            <br><strong>设计理由：</strong>浅色背景搭配蓝紫渐变主色，营造干净数字画布感，粉色辅色与青色点缀体现艺术创作的灵感和多样性。
-        </div>
-    </div>
-</div>
-
-
-<div class="slide-card">
-    <div class="slide-meta">
-        <div class="slide-title">3. 神经网络脉冲 - 高对比科技系</div>
-        <div class="slide-badge">bold</div>
-    </div>
-
-    <div class="slide-preview" style="background: linear-gradient(135deg, #000000 0%, #0a0a23 100%); color: #ffffff;">
-        <!-- 顶部标题区 -->
-        <div style="padding: 60px 80px 0 80px;">
-            <h2 style="font-size: 48px; font-weight: 700; color: #00ff88; margin-bottom: 16px;">
-                AI 与艺术的融合
-            </h2>
-            <div style="width: 120px; height: 4px; background: #ffbe0b; margin-bottom: 40px;"></div>
-        </div>
-
-        <!-- 内容区 -->
-        <div style="padding: 0 80px;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
-                <!-- 左栏 -->
-                <div>
-                    <h3 style="font-size: 28px; color: #ffffff; margin-bottom: 20px; font-weight: 600;">
-                        核心观点
-                    </h3>
-                    <ul style="list-style: none; padding: 0;">
-                        <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #a0a0a0;">
-                            <span style="position: absolute; left: 0; color: #ffbe0b;">▸</span>
-                            主题核心要素一
-                        </li>
-                        <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #a0a0a0;">
-                            <span style="position: absolute; left: 0; color: #ffbe0b;">▸</span>
-                            主题核心要素二
-                        </li>
-                        <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #a0a0a0;">
-                            <span style="position: absolute; left: 0; color: #ffbe0b;">▸</span>
-                            主题核心要素三
-                        </li>
-                    </ul>
-                </div>
-
-                <!-- 右栏 -->
-                <div style="background: #121212; padding: 32px; border-radius: 12px; border: 2px solid #2a2a4a;">
-                    <h4 style="font-size: 22px; color: #00ff88; margin-bottom: 16px; font-weight: 600;">
-                        关键数据
-                    </h4>
-                    <div style="margin-bottom: 20px;">
-                        <div style="font-size: 48px; font-weight: 700; color: #ffbe0b;">100%</div>
-                        <div style="font-size: 16px; color: #a0a0a0;">主题相关指标</div>
-                    </div>
-                    <div style="font-size: 14px; color: #a0a0a0; line-height: 1.6;">
-                        纯黑背景突出霓虹绿脉冲主色，模拟神经网络信号，粉色与橙色点缀表达艺术激情，高对比适合技术受众。
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="slide-info">
-        <div class="color-palette">
-            <div class="color-chip" style="background: linear-gradient(135deg, #000000 0%, #0a0a23 100%);" title="gradient_bg: linear-gradient(135deg, #000000 0%, #0a0a23 100%)..."></div>
-            <div class="color-chip" style="background: #00ff88;" title="primary: #00ff88"></div>
-            <div class="color-chip" style="background: linear-gradient(135deg, #00ff88 0%, #00bcd4 100%);" title="primary_gradient: linear-gradient(135deg, #00ff88 0%, #00bcd4 100%)..."></div>
-            <div class="color-chip" style="background: #ff006e;" title="secondary: #ff006e"></div>
-            <div class="color-chip" style="background: #ffbe0b;" title="accent: #ffbe0b"></div>
-            <div class="color-chip" style="background: #fb5607;" title="accent_dark: #fb5607"></div>
-            <div class="color-chip" style="background: #ffffff;" title="text_primary: #ffffff"></div>
-            <div class="color-chip" style="background: #a0a0a0;" title="text_secondary: #a0a0a0"></div>
-            <div class="color-chip" style="background: #121212;" title="surface: #121212"></div>
-            <div class="color-chip" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);" title="card_bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)..."></div>
-            <div class="color-chip" style="background: #2a2a4a;" title="border: #2a2a4a"></div>
-        </div>
-        <div class="reasoning">
-            <strong>配色数量：</strong>11 个颜色
-            <br><strong>设计理由：</strong>纯黑背景突出霓虹绿脉冲主色，模拟神经网络信号，粉色与橙色点缀表达艺术激情，高对比适合技术受众。
-        </div>
-    </div>
-</div>
-
-
-<div class="slide-card">
-    <div class="slide-meta">
-        <div class="slide-title">4. 灵感光谱 - 多彩撞色系</div>
+        <div class="slide-title">2. 算法暖阳 - 亲和协作系</div>
         <div class="slide-badge">playful</div>
     </div>
-
-    <div class="slide-preview" style="background: linear-gradient(135deg, #ff6b6b 0%, #feca57 25%, #48dbfb 50%, #ff9ff3 75%, #54a0ff 100%); color: #2c3e50;">
-        <!-- 顶部标题区 -->
-        <div style="padding: 60px 80px 0 80px;">
-            <h2 style="font-size: 48px; font-weight: 700; color: #ff9ff3; margin-bottom: 16px;">
-                AI 与艺术的融合
-            </h2>
-            <div style="width: 120px; height: 4px; background: #ff6b6b; margin-bottom: 40px;"></div>
-        </div>
-
-        <!-- 内容区 -->
-        <div style="padding: 0 80px;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
-                <!-- 左栏 -->
-                <div>
-                    <h3 style="font-size: 28px; color: #2c3e50; margin-bottom: 20px; font-weight: 600;">
-                        核心观点
-                    </h3>
-                    <ul style="list-style: none; padding: 0;">
-                        <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #636e72;">
-                            <span style="position: absolute; left: 0; color: #ff6b6b;">▸</span>
-                            主题核心要素一
-                        </li>
-                        <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #636e72;">
-                            <span style="position: absolute; left: 0; color: #ff6b6b;">▸</span>
-                            主题核心要素二
-                        </li>
-                        <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #636e72;">
-                            <span style="position: absolute; left: 0; color: #ff6b6b;">▸</span>
-                            主题核心要素三
-                        </li>
-                    </ul>
-                </div>
-
-                <!-- 右栏 -->
-                <div style="background: #ffffff; padding: 32px; border-radius: 12px; border: 2px solid #b2bec3;">
-                    <h4 style="font-size: 22px; color: #ff9ff3; margin-bottom: 16px; font-weight: 600;">
-                        关键数据
-                    </h4>
-                    <div style="margin-bottom: 20px;">
-                        <div style="font-size: 48px; font-weight: 700; color: #ff6b6b;">100%</div>
-                        <div style="font-size: 16px; color: #636e72;">主题相关指标</div>
+    <div class="slide-preview-wrapper">
+        <div class="slide-preview" style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); color: #2d3436;">
+            <div style="padding: 60px 80px 0 80px;">
+                <h2 style="font-size: 48px; font-weight: 700; color: #f7971e; margin-bottom: 16px;">
+                    AI与艺术的融合：探讨人工智能如何改变创意产业
+                </h2>
+                <div style="width: 120px; height: 4px; background: #e74c3c; margin-bottom: 40px;"></div>
+            </div>
+            <div style="padding: 0 80px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+                    <div>
+                        <h3 style="font-size: 28px; color: #2d3436; margin-bottom: 20px; font-weight: 600;">核心观点</h3>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #636e72;">
+                                <span style="position: absolute; left: 0; color: #e74c3c;">▸</span>主题核心要素一
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #636e72;">
+                                <span style="position: absolute; left: 0; color: #e74c3c;">▸</span>主题核心要素二
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #636e72;">
+                                <span style="position: absolute; left: 0; color: #e74c3c;">▸</span>主题核心要素三
+                            </li>
+                        </ul>
                     </div>
-                    <div style="font-size: 14px; color: #636e72; line-height: 1.6;">
-                        全光谱渐变背景象征AI生成艺术的无限可能，粉蓝紫主辅色搭配温暖黄橙，大胆撞色激发创意灵感。
+                    <div style="background: #fff9e6; padding: 32px; border-radius: 12px; border: 2px solid #ffeaa7;">
+                        <h4 style="font-size: 22px; color: #f7971e; margin-bottom: 16px; font-weight: 600;">关键数据</h4>
+                        <div style="margin-bottom: 20px;">
+                            <div style="font-size: 48px; font-weight: 700; color: #e74c3c;">100%</div>
+                            <div style="font-size: 16px; color: #636e72;">主题相关指标</div>
+                        </div>
+                        <div style="font-size: 14px; color: #636e72; line-height: 1.6;">暖阳渐变传递AI辅助创作的温暖与协作感，明亮活泼，适合面向大众创意工具。</div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-
     <div class="slide-info">
         <div class="color-palette">
-            <div class="color-chip" style="background: linear-gradient(135deg, #ff6b6b 0%, #feca57 25%, #48dbfb 50%, #ff9ff3 75%, #54a0ff 100%);" title="gradient_bg: linear-gradient(135deg, #ff6b6b 0%, #feca57 25%, #..."></div>
-            <div class="color-chip" style="background: #ff9ff3;" title="primary: #ff9ff3"></div>
-            <div class="color-chip" style="background: linear-gradient(135deg, #ff9ff3 0%, #f368e0 100%);" title="primary_gradient: linear-gradient(135deg, #ff9ff3 0%, #f368e0 100%)..."></div>
-            <div class="color-chip" style="background: #48dbfb;" title="secondary: #48dbfb"></div>
-            <div class="color-chip" style="background: #ff6b6b;" title="accent: #ff6b6b"></div>
-            <div class="color-chip" style="background: #feca57;" title="accent_light: #feca57"></div>
-            <div class="color-chip" style="background: #2c3e50;" title="text_primary: #2c3e50"></div>
-            <div class="color-chip" style="background: #636e72;" title="text_secondary: #636e72"></div>
-            <div class="color-chip" style="background: #ffffff;" title="surface: #ffffff"></div>
-            <div class="color-chip" style="background: radial-gradient(circle, #ffffff 0%, #dfe6e9 100%);" title="card_bg: radial-gradient(circle, #ffffff 0%, #dfe6e9 100%)..."></div>
-            <div class="color-chip" style="background: #b2bec3;" title="border: #b2bec3"></div>
+            <div class="color-chip" style="background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%);" title="gradient_bg: linear-gradient(135deg, #f7971e 0%, #ffd200 100%)"></div>
+<div class="color-chip" style="background-color: #f7971e;" title="primary: #f7971e"></div>
+<div class="color-chip" style="background-color: #ffd200;" title="secondary: #ffd200"></div>
+<div class="color-chip" style="background-color: #e74c3c;" title="accent: #e74c3c"></div>
+<div class="color-chip" style="background-color: #fd79a8;" title="accent_light: #fd79a8"></div>
+<div class="color-chip" style="background-color: #2d3436;" title="text_primary: #2d3436"></div>
+<div class="color-chip" style="background-color: #636e72;" title="text_secondary: #636e72"></div>
+<div class="color-chip" style="background-color: #b2bec3;" title="text_disabled: #b2bec3"></div>
+<div class="color-chip" style="background-color: #fff9e6;" title="surface: #fff9e6"></div>
+<div class="color-chip" style="background-color: #ffffff;" title="card_bg: #ffffff"></div>
+<div class="color-chip" style="background-color: #ffeaa7;" title="border: #ffeaa7"></div>
+
         </div>
         <div class="reasoning">
-            <strong>配色数量：</strong>11 个颜色
-            <br><strong>设计理由：</strong>全光谱渐变背景象征AI生成艺术的无限可能，粉蓝紫主辅色搭配温暖黄橙，大胆撞色激发创意灵感。
+            <strong>配色数量：</strong>11 个 &nbsp;|&nbsp;
+            <strong>设计理由：</strong>暖阳渐变传递AI辅助创作的温暖与协作感，明亮活泼，适合面向大众创意工具。
+        </div>
+    </div>
+</div>
+
+
+<div class="slide-card" data-index="2" onclick="selectCard(this)">
+    <div class="selected-badge">✓ 已选择</div>
+    <div class="slide-meta">
+        <div class="slide-title">3. 数据深海 - 科技探索系</div>
+        <div class="slide-badge">corporate</div>
+    </div>
+    <div class="slide-preview-wrapper">
+        <div class="slide-preview" style="background: linear-gradient(135deg, #0b3d91 0%, #1e90ff 100%); color: #ffffff;">
+            <div style="padding: 60px 80px 0 80px;">
+                <h2 style="font-size: 48px; font-weight: 700; color: #00bcd4; margin-bottom: 16px;">
+                    AI与艺术的融合：探讨人工智能如何改变创意产业
+                </h2>
+                <div style="width: 120px; height: 4px; background: #76ff03; margin-bottom: 40px;"></div>
+            </div>
+            <div style="padding: 0 80px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+                    <div>
+                        <h3 style="font-size: 28px; color: #ffffff; margin-bottom: 20px; font-weight: 600;">核心观点</h3>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #b0bec5;">
+                                <span style="position: absolute; left: 0; color: #76ff03;">▸</span>主题核心要素一
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #b0bec5;">
+                                <span style="position: absolute; left: 0; color: #76ff03;">▸</span>主题核心要素二
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #b0bec5;">
+                                <span style="position: absolute; left: 0; color: #76ff03;">▸</span>主题核心要素三
+                            </li>
+                        </ul>
+                    </div>
+                    <div style="background: #0a192f; padding: 32px; border-radius: 12px; border: 2px solid #1e3a5f;">
+                        <h4 style="font-size: 22px; color: #00bcd4; margin-bottom: 16px; font-weight: 600;">关键数据</h4>
+                        <div style="margin-bottom: 20px;">
+                            <div style="font-size: 48px; font-weight: 700; color: #76ff03;">100%</div>
+                            <div style="font-size: 16px; color: #b0bec5;">主题相关指标</div>
+                        </div>
+                        <div style="font-size: 14px; color: #b0bec5; line-height: 1.6;">深海蓝渐变象征AI的深度与未知，荧光绿点缀创意火花，冷静专业中不失活力。</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-info">
+        <div class="color-palette">
+            <div class="color-chip" style="background: linear-gradient(135deg, #0b3d91 0%, #1e90ff 100%);" title="gradient_bg: linear-gradient(135deg, #0b3d91 0%, #1e90ff 100%)"></div>
+<div class="color-chip" style="background-color: #00bcd4;" title="primary: #00bcd4"></div>
+<div class="color-chip" style="background: linear-gradient(135deg, #00bcd4 0%, #2196f3 100%);" title="primary_gradient: linear-gradient(135deg, #00bcd4 0%, #2196f3 100%)"></div>
+<div class="color-chip" style="background-color: #2196f3;" title="secondary: #2196f3"></div>
+<div class="color-chip" style="background-color: #76ff03;" title="accent: #76ff03"></div>
+<div class="color-chip" style="background-color: #b2ff59;" title="accent_light: #b2ff59"></div>
+<div class="color-chip" style="background-color: #ffffff;" title="text_primary: #ffffff"></div>
+<div class="color-chip" style="background-color: #b0bec5;" title="text_secondary: #b0bec5"></div>
+<div class="color-chip" style="background-color: #607d8b;" title="text_disabled: #607d8b"></div>
+<div class="color-chip" style="background-color: #0a192f;" title="surface: #0a192f"></div>
+<div class="color-chip" style="background-color: #112240;" title="card_bg: #112240"></div>
+<div class="color-chip" style="background-color: #1e3a5f;" title="border: #1e3a5f"></div>
+
+        </div>
+        <div class="reasoning">
+            <strong>配色数量：</strong>12 个 &nbsp;|&nbsp;
+            <strong>设计理由：</strong>深海蓝渐变象征AI的深度与未知，荧光绿点缀创意火花，冷静专业中不失活力。
+        </div>
+    </div>
+</div>
+
+
+<div class="slide-card" data-index="3" onclick="selectCard(this)">
+    <div class="selected-badge">✓ 已选择</div>
+    <div class="slide-meta">
+        <div class="slide-title">4. 赛博霓虹 - 突破撞色系</div>
+        <div class="slide-badge">bold</div>
+    </div>
+    <div class="slide-preview-wrapper">
+        <div class="slide-preview" style="background: radial-gradient(circle, #ff007f 0%, #7000ff 50%, #000000 100%); color: #ffffff;">
+            <div style="padding: 60px 80px 0 80px;">
+                <h2 style="font-size: 48px; font-weight: 700; color: #ff007f; margin-bottom: 16px;">
+                    AI与艺术的融合：探讨人工智能如何改变创意产业
+                </h2>
+                <div style="width: 120px; height: 4px; background: #00ffff; margin-bottom: 40px;"></div>
+            </div>
+            <div style="padding: 0 80px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+                    <div>
+                        <h3 style="font-size: 28px; color: #ffffff; margin-bottom: 20px; font-weight: 600;">核心观点</h3>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #e0e0e0;">
+                                <span style="position: absolute; left: 0; color: #00ffff;">▸</span>主题核心要素一
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #e0e0e0;">
+                                <span style="position: absolute; left: 0; color: #00ffff;">▸</span>主题核心要素二
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #e0e0e0;">
+                                <span style="position: absolute; left: 0; color: #00ffff;">▸</span>主题核心要素三
+                            </li>
+                        </ul>
+                    </div>
+                    <div style="background: #1a0033; padding: 32px; border-radius: 12px; border: 2px solid #4d0099;">
+                        <h4 style="font-size: 22px; color: #ff007f; margin-bottom: 16px; font-weight: 600;">关键数据</h4>
+                        <div style="margin-bottom: 20px;">
+                            <div style="font-size: 48px; font-weight: 700; color: #00ffff;">100%</div>
+                            <div style="font-size: 16px; color: #e0e0e0;">主题相关指标</div>
+                        </div>
+                        <div style="font-size: 14px; color: #e0e0e0; line-height: 1.6;">霓虹粉紫渐变与青色撞色，大胆突破传统，呼应AI颠覆创意产业的变革力量。</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-info">
+        <div class="color-palette">
+            <div class="color-chip" style="background: radial-gradient(circle, #ff007f 0%, #7000ff 50%, #000000 100%);" title="gradient_bg: radial-gradient(circle, #ff007f 0%, #7000ff 50%, #..."></div>
+<div class="color-chip" style="background-color: #ff007f;" title="primary: #ff007f"></div>
+<div class="color-chip" style="background: linear-gradient(135deg, #ff007f 0%, #7000ff 100%);" title="primary_gradient: linear-gradient(135deg, #ff007f 0%, #7000ff 100%)"></div>
+<div class="color-chip" style="background-color: #7000ff;" title="secondary: #7000ff"></div>
+<div class="color-chip" style="background-color: #00ffff;" title="accent: #00ffff"></div>
+<div class="color-chip" style="background-color: #80ffff;" title="accent_light: #80ffff"></div>
+<div class="color-chip" style="background-color: #ffffff;" title="text_primary: #ffffff"></div>
+<div class="color-chip" style="background-color: #e0e0e0;" title="text_secondary: #e0e0e0"></div>
+<div class="color-chip" style="background-color: #9e9e9e;" title="text_disabled: #9e9e9e"></div>
+<div class="color-chip" style="background-color: #1a0033;" title="surface: #1a0033"></div>
+<div class="color-chip" style="background-color: #2a0050;" title="card_bg: #2a0050"></div>
+<div class="color-chip" style="background-color: #4d0099;" title="border: #4d0099"></div>
+
+        </div>
+        <div class="reasoning">
+            <strong>配色数量：</strong>12 个 &nbsp;|&nbsp;
+            <strong>设计理由：</strong>霓虹粉紫渐变与青色撞色，大胆突破传统，呼应AI颠覆创意产业的变革力量。
+        </div>
+    </div>
+</div>
+
+
+<div class="slide-card" data-index="4" onclick="selectCard(this)">
+    <div class="selected-badge">✓ 已选择</div>
+    <div class="slide-meta">
+        <div class="slide-title">5. 极简白盒 - 纯净界面系</div>
+        <div class="slide-badge">minimalist</div>
+    </div>
+    <div class="slide-preview-wrapper">
+        <div class="slide-preview" style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); color: #2d3436;">
+            <div style="padding: 60px 80px 0 80px;">
+                <h2 style="font-size: 48px; font-weight: 700; color: #6c5ce7; margin-bottom: 16px;">
+                    AI与艺术的融合：探讨人工智能如何改变创意产业
+                </h2>
+                <div style="width: 120px; height: 4px; background: #00cec9; margin-bottom: 40px;"></div>
+            </div>
+            <div style="padding: 0 80px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+                    <div>
+                        <h3 style="font-size: 28px; color: #2d3436; margin-bottom: 20px; font-weight: 600;">核心观点</h3>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #636e72;">
+                                <span style="position: absolute; left: 0; color: #00cec9;">▸</span>主题核心要素一
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #636e72;">
+                                <span style="position: absolute; left: 0; color: #00cec9;">▸</span>主题核心要素二
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #636e72;">
+                                <span style="position: absolute; left: 0; color: #00cec9;">▸</span>主题核心要素三
+                            </li>
+                        </ul>
+                    </div>
+                    <div style="background: #ffffff; padding: 32px; border-radius: 12px; border: 2px solid #dfe6e9;">
+                        <h4 style="font-size: 22px; color: #6c5ce7; margin-bottom: 16px; font-weight: 600;">关键数据</h4>
+                        <div style="margin-bottom: 20px;">
+                            <div style="font-size: 48px; font-weight: 700; color: #00cec9;">100%</div>
+                            <div style="font-size: 16px; color: #636e72;">主题相关指标</div>
+                        </div>
+                        <div style="font-size: 14px; color: #636e72; line-height: 1.6;">浅色渐变背景搭配紫罗兰主色，干净聚焦内容，适合展示AI艺术作品的画廊界面。</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-info">
+        <div class="color-palette">
+            <div class="color-chip" style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);" title="gradient_bg: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)"></div>
+<div class="color-chip" style="background-color: #6c5ce7;" title="primary: #6c5ce7"></div>
+<div class="color-chip" style="background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%);" title="primary_gradient: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%)"></div>
+<div class="color-chip" style="background-color: #a29bfe;" title="secondary: #a29bfe"></div>
+<div class="color-chip" style="background-color: #00cec9;" title="accent: #00cec9"></div>
+<div class="color-chip" style="background-color: #55efc4;" title="accent_light: #55efc4"></div>
+<div class="color-chip" style="background-color: #2d3436;" title="text_primary: #2d3436"></div>
+<div class="color-chip" style="background-color: #636e72;" title="text_secondary: #636e72"></div>
+<div class="color-chip" style="background-color: #b2bec3;" title="text_disabled: #b2bec3"></div>
+<div class="color-chip" style="background-color: #ffffff;" title="surface: #ffffff"></div>
+<div class="color-chip" style="background-color: #f8f9fa;" title="card_bg: #f8f9fa"></div>
+<div class="color-chip" style="background-color: #dfe6e9;" title="border: #dfe6e9"></div>
+
+        </div>
+        <div class="reasoning">
+            <strong>配色数量：</strong>12 个 &nbsp;|&nbsp;
+            <strong>设计理由：</strong>浅色渐变背景搭配紫罗兰主色，干净聚焦内容，适合展示AI艺术作品的画廊界面。
         </div>
     </div>
 </div>
 
 
 </div>
+
+<!-- 底部确认栏 -->
+<div class="confirm-bar">
+    <div class="confirm-hint" id="hint">请先点击上方任意方案卡片选择</div>
+    <button class="confirm-btn" id="confirmBtn" disabled onclick="confirmSelection()">确认方案</button>
+</div>
+
 <script>
-// 点击幻灯片预览区域可以放大查看
-document.querySelectorAll('.slide-preview').forEach(slide => {
-    slide.style.cursor = 'pointer';
-    slide.addEventListener('click', function() {
-        if (this.style.transform === 'scale(1.1)') {
-            this.style.transform = 'scale(1)';
-            this.style.transition = 'transform 0.3s';
-        } else {
-            this.style.transform = 'scale(1.1)';
-            this.style.transition = 'transform 0.3s';
-        }
+const PORT = 7788;
+let selectedIndex = null;
+
+function selectCard(el) {
+    document.querySelectorAll('.slide-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    selectedIndex = parseInt(el.dataset.index);
+    const title = el.querySelector('.slide-title').textContent.trim();
+    document.getElementById('hint').innerHTML = '已选择：<span>' + title + '</span>';
+    document.getElementById('confirmBtn').disabled = false;
+}
+
+function confirmSelection() {
+    if (selectedIndex === null) return;
+    const btn = document.getElementById('confirmBtn');
+    btn.disabled = true;
+    btn.textContent = '提交中…';
+    fetch('http://localhost:' + PORT + '/select', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({index: selectedIndex})
+    })
+    .then(r => r.json())
+    .then(() => {
+        btn.textContent = '✓ 已确认，正在生成 PPT…';
+        btn.style.background = '#22c55e';
+        document.getElementById('hint').innerHTML = '<span>方案已提交！窗口即将关闭…</span>';
+        setTimeout(() => window.close(), 800);
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.textContent = '确认方案';
+        alert('提交失败：' + err.message);
     });
-});
+}
 </script>
 </body>
 </html>

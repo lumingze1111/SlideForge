@@ -191,40 +191,25 @@ def print_proposals(proposals: DesignProposals, topic: str = "") -> None:
 
     print("\n" + "═" * 70)
 
-    # 生成 HTML 预览页面
-    from slideforge.preview_generator import generate_preview_html
+
+def pick_proposal(proposals: DesignProposals, topic: str = "") -> ColorProposal:
+    """让用户在浏览器中点击选择一套方案"""
+    from slideforge.preview_generator import generate_preview_html, wait_for_selection
+
     preview_path = generate_preview_html(proposals.proposals, topic or "主题演示")
     print(f"\n  💡 预览页面已生成：{preview_path}")
-    print(f"  在浏览器中打开查看完整 PPT 效果")
 
-    # 自动打开浏览器（macOS）
     import subprocess
     try:
         subprocess.run(["open", preview_path], check=False)
         print(f"  ✓ 已在浏览器中打开预览")
-    except:
+    except Exception:
         pass
 
-
-def pick_proposal(proposals: DesignProposals, topic: str = "") -> ColorProposal:
-    """让用户选择一套方案"""
-    print_proposals(proposals, topic)
-
-    while True:
-        raw = input(f"\n请选择方案编号（1-{len(proposals.proposals)}，直接回车选推荐方案）: ").strip()
-
-        if raw == "":
-            idx = proposals.recommended_index
-            print(f"  ✓ 已选择推荐方案：{proposals.proposals[idx].name}")
-            return proposals.proposals[idx]
-
-        if raw.isdigit():
-            idx = int(raw) - 1
-            if 0 <= idx < len(proposals.proposals):
-                print(f"  ✓ 已选择：{proposals.proposals[idx].name}")
-                return proposals.proposals[idx]
-
-        print("  ✗ 无效输入，请重试")
+    idx = wait_for_selection(len(proposals.proposals))
+    chosen = proposals.proposals[idx]
+    print(f"\n  ✓ 已选择方案 [{idx + 1}]：{chosen.name}")
+    return chosen
 
 
 def generate_preview_image(proposal: ColorProposal, output_path: str = None) -> Optional[str]:
