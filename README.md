@@ -38,7 +38,7 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/yourusername/SlideForge.git
+git clone https://github.com/lumingze1111/SlideForge.git
 cd SlideForge
 
 # 安装依赖
