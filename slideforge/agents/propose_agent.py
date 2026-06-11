@@ -19,17 +19,46 @@ except ImportError:
 class ColorProposal(BaseModel):
     """单套配色方案提案"""
     name: str = Field(description="方案名称，体现主题特点，如'深海探索蓝'")
-    primary: str = Field(description="主色，十六进制色值")
-    secondary: str = Field(description="辅色")
-    accent: str = Field(description="强调色")
-    background: str = Field(description="背景色")
-    surface: str = Field(description="表面色")
-    text_primary: str = Field(description="主要文本色")
-    text_secondary: str = Field(description="次要文本色")
-    text_disabled: str = Field(description="禁用文本色")
-    border: str = Field(description="边框色")
+    colors: Dict[str, str] = Field(description="配色字典，至少4个颜色，可以包含渐变。key为颜色用途（如'primary','gradient_bg','accent_1'），value为颜色值（纯色用十六进制如#1976D2，渐变用CSS格式如'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'）")
     visual_style: str = Field(description="推荐视觉风格：minimalist/bold/elegant/corporate/playful")
     reasoning: str = Field(description="为什么这套配色适合该主题，50字以内")
+
+    # 为了兼容旧代码，提供便捷访问属性
+    @property
+    def primary(self) -> str:
+        return self.colors.get('primary', '#1976D2')
+
+    @property
+    def secondary(self) -> str:
+        return self.colors.get('secondary', '#424242')
+
+    @property
+    def accent(self) -> str:
+        return self.colors.get('accent', '#FFC107')
+
+    @property
+    def background(self) -> str:
+        return self.colors.get('background', '#FFFFFF')
+
+    @property
+    def surface(self) -> str:
+        return self.colors.get('surface', self.colors.get('background', '#F5F5F5'))
+
+    @property
+    def text_primary(self) -> str:
+        return self.colors.get('text_primary', '#212121')
+
+    @property
+    def text_secondary(self) -> str:
+        return self.colors.get('text_secondary', '#757575')
+
+    @property
+    def text_disabled(self) -> str:
+        return self.colors.get('text_disabled', '#BDBDBD')
+
+    @property
+    def border(self) -> str:
+        return self.colors.get('border', '#E0E0E0')
 
 
 class DesignProposals(BaseModel):
@@ -38,47 +67,58 @@ class DesignProposals(BaseModel):
     recommended_index: int = Field(description="最推荐方案的索引（0-based）")
 
 
-SYSTEM_PROMPT = """你是顶尖的视觉设计师，擅长从主题中提取核心意象，转化为精准的配色方案。
+SYSTEM_PROMPT = """你是顶尖的视觉设计师，擅长从主题中提取核心意象，转化为精准的配色方案（包含渐变色）。
 
 ## 任务
 根据主题和受众，生成 3-5 套**高度差异化**的配色方案。
 
 ## 分析步骤
-1. **提取主题关键词** — 从主题中识别核心概念（如"量子"→微观/不确定性/科技感）
-2. **关联色彩意象** — 将概念映射到色彩心理学（量子→紫/蓝/银灰，代表神秘/理性/未来）
-3. **受众适配** — 技术受众偏深色/高对比，大众受众偏柔和/亲和
-4. **对比度验证** — 确保文字色在背景色上 WCAG AA ≥ 4.5:1
+1. **提取主题关键词** — 从主题中识别核心概念（如"深海"→深邃/神秘/流动/压力）
+2. **关联色彩意象** — 将概念映射到色彩（深海→深蓝渐变至黑、生物荧光绿、深渊紫）
+3. **渐变设计** — 根据主题动态特征设计渐变（海洋→蓝绿渐变，量子→紫蓝渐变，日落→橙红渐变）
+4. **受众适配** — 技术受众偏深色/高对比，大众受众偏柔和/亲和
+5. **对比度验证** — 确保文字色在背景色上 WCAG AA ≥ 4.5:1
 
 ## 配色要求
-1. **主色 (primary)** — 直接体现主题核心意象，非通用商务蓝/灰
-2. **辅色 (secondary)** — 与主色形成呼应或对比，丰富层次
-3. **强调色 (accent)** — 高饱和，用于 CTA 和关键信息
-4. **背景/表面色** — 深色主题用 #0D-#1A 区间，浅色主题 ≥ #F5
-5. **文字色** — 深背景用 #E0-#FF，浅背景用 #1A-#3A，确保对比度
-6. **边框/禁用色** — 与背景形成微妙层次，对比度 2-3:1
+1. **数量自由** — 每套方案至少 4 个颜色，可以更多（6-10个）以满足层次需求
+2. **颜色格式**：
+   - 纯色：十六进制 `#1976D2`
+   - 渐变：CSS `linear-gradient(135deg, #667eea 0%, #764ba2 100%)`
+   - 径向渐变：`radial-gradient(circle, #ff6b6b 0%, #4ecdc4 100%)`
+3. **颜色用途命名**（示例）：
+   - `background` / `gradient_bg` — 背景（建议至少一个渐变背景）
+   - `primary` / `primary_gradient` — 主色
+   - `secondary` — 辅色
+   - `accent` / `accent_light` / `accent_dark` — 强调色（可多个层次）
+   - `text_primary` / `text_secondary` / `text_disabled` — 文字色
+   - `surface` / `card_bg` — 表面/卡片背景
+   - `border` / `divider` — 边框/分隔线
+4. **渐变运用场景**：
+   - 背景渐变增加空间深度（如深海从蓝渐变至黑）
+   - 标题渐变增强视觉冲击（如量子紫蓝渐变文字）
+   - 卡片/按钮渐变增加质感
+5. **对比度** — 文字色在渐变背景上需测试多点对比度
 
 ## 方案多样性
-- 方案1：最贴合主题的代表性配色（推荐方案）
-- 方案2-3：从不同角度诠释主题（如深色/浅色，冷色/暖色）
-- 方案4-5：突破常规的创意配色（如反转对比，多彩点缀）
+- 方案1：最贴合主题的代表性配色，必须包含渐变（推荐方案）
+- 方案2-3：从不同角度诠释主题（深色/浅色，冷色/暖色，至少一个用渐变）
+- 方案4-5：突破常规的创意配色（多色渐变，大胆撞色）
 
 ## 方案命名规则
 必须包含**主题关键词 + 色彩意象 + 情绪**，例如：
-- ✅ "量子微光 - 深紫科技感"
-- ✅ "神经网络 - 霓虹赛博风"
-- ✅ "海洋保护 - 湛蓝生态系"
-- ❌ "紫色科技方案"（太通用）
-- ❌ "方案1"（无信息量）
+- ✅ "深海幽蓝渐变 - 神秘探索系"
+- ✅ "量子紫光波 - 赛博未来感"
+- ✅ "日落暖金流 - 温暖希望系"
 
 ## 主题强化检查
-生成后自问：**如果去掉主题，这套配色是否仍有独特性？** 如果答案是"否"，说明主题强化不足。
+生成后自问：**配色是否体现主题的动态特征？渐变是否增强了主题表达？**
 
 ---
 
 **主题**：{topic}
 **受众**：{audience}
 
-直接输出 JSON，无其他文字。"""
+直接输出 JSON，colors 字段为字典，至少 4 个颜色，鼓励使用渐变。"""
 
 
 def run_propose_agent(
@@ -99,45 +139,76 @@ def run_propose_agent(
     """
     prompt = SYSTEM_PROMPT.format(topic=topic, audience=audience or "通用受众")
 
-    structured_llm = llm.with_structured_output(DesignProposals)
-    result = structured_llm.invoke(prompt)
+    # 尝试 structured_output，失败则用 JSON mode
+    try:
+        structured_llm = llm.with_structured_output(DesignProposals)
+        result = structured_llm.invoke(prompt)
+        return result
+    except Exception as e:
+        # Fallback: JSON mode
+        import json
+        from langchain_core.messages import HumanMessage, SystemMessage
 
-    return result
+        schema_str = json.dumps(DesignProposals.model_json_schema(), ensure_ascii=False, indent=2)
+        json_prompt = prompt + "\n\n必须严格按照以下 JSON schema 输出：\n" + schema_str
+
+        response = llm.invoke([
+            SystemMessage(content="You are a professional visual designer. Output valid JSON only."),
+            HumanMessage(content=json_prompt)
+        ])
+
+        # 提取 JSON
+        content = response.content
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0]
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0]
+
+        data = json.loads(content.strip())
+        return DesignProposals(**data)
 
 
-def print_proposals(proposals: DesignProposals) -> None:
+def print_proposals(proposals: DesignProposals, topic: str = "") -> None:
     """打印方案列表，供用户选择"""
     print("\n" + "═" * 70)
     print("  🎨 定制设计方案（根据主题生成）")
     print("═" * 70)
 
-    preview_paths = []
     for i, p in enumerate(proposals.proposals, 1):
         marker = "⭐ 推荐" if i - 1 == proposals.recommended_index else ""
         print(f"\n  [{i}] {p.name} {marker}")
         print(f"      风格: {p.visual_style}")
-        print(f"      配色: 主色 {p.primary}  辅色 {p.secondary}  强调 {p.accent}")
-        print(f"      背景: {p.background}  文字 {p.text_primary}")
-        print(f"      理由: {p.reasoning}")
+        print(f"      配色数量: {len(p.colors)} 个")
 
-        # 生成预览图
-        if PIL_AVAILABLE:
-            preview_path = generate_preview_image(p)
-            if preview_path:
-                preview_paths.append((i, preview_path))
-                print(f"      预览: {preview_path}")
+        # 显示所有颜色
+        for key, value in list(p.colors.items())[:6]:  # 最多显示6个
+            display_value = value[:50] + "..." if len(value) > 50 else value
+            print(f"        • {key}: {display_value}")
+        if len(p.colors) > 6:
+            print(f"        ... 还有 {len(p.colors) - 6} 个颜色")
+
+        print(f"      理由: {p.reasoning}")
 
     print("\n" + "═" * 70)
 
-    if preview_paths and PIL_AVAILABLE:
-        print("\n  💡 预览图已生成，可用图片查看器打开上述路径查看配色效果")
-    elif not PIL_AVAILABLE:
-        print("\n  ℹ️  安装 Pillow 可生成配色预览图：pip install Pillow")
+    # 生成 HTML 预览页面
+    from slideforge.preview_generator import generate_preview_html
+    preview_path = generate_preview_html(proposals.proposals, topic or "主题演示")
+    print(f"\n  💡 预览页面已生成：{preview_path}")
+    print(f"  在浏览器中打开查看完整 PPT 效果")
+
+    # 自动打开浏览器（macOS）
+    import subprocess
+    try:
+        subprocess.run(["open", preview_path], check=False)
+        print(f"  ✓ 已在浏览器中打开预览")
+    except:
+        pass
 
 
-def pick_proposal(proposals: DesignProposals) -> ColorProposal:
+def pick_proposal(proposals: DesignProposals, topic: str = "") -> ColorProposal:
     """让用户选择一套方案"""
-    print_proposals(proposals)
+    print_proposals(proposals, topic)
 
     while True:
         raw = input(f"\n请选择方案编号（1-{len(proposals.proposals)}，直接回车选推荐方案）: ").strip()
