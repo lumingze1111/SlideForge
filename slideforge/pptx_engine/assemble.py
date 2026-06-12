@@ -1399,26 +1399,22 @@ def assemble_slide(slide, data):
     )
     _prepare_text_layouts(data["records"])
 
-    # ── Layout Agent 调优（opt-in）───────────────────────────────────
-    # 设置环境变量 SLIDEFORGE_LAYOUT_AGENT=1 启用 LLM 智能布局调整。
-    # 默认禁用：LLM 布局调整仍为实验性功能，在复杂内容页上可能产生位置偏差。
-    import os
-    if os.environ.get("SLIDEFORGE_LAYOUT_AGENT") == "1":
-        try:
-            from slideforge.agents.layout_agent import run_layout_agent
-            from langchain_openai import ChatOpenAI
+    # ── Layout Agent 调优 ───────────────────────────────────────────
+    try:
+        from slideforge.agents.layout_agent import run_layout_agent
+        from langchain_openai import ChatOpenAI
 
-            llm = ChatOpenAI(model="gpt-4o", temperature=0)
-            adjustments = run_layout_agent(llm, data["records"])
-            for rec in data["records"]:
-                eid = str(rec.get("id", ""))
-                if eid in adjustments:
-                    x, y, w, h = adjustments[eid]
-                    rec["_adjusted_rect"] = (x, y, w, h)
-        except ImportError:
-            pass  # Layout Agent 模块未安装，使用 _scaled_rect
-        except Exception:
-            pass  # 任何异常 fallback 到 _scaled_rect
+        llm = ChatOpenAI(model="gpt-4o", temperature=0)
+        adjustments = run_layout_agent(llm, data["records"])
+        for rec in data["records"]:
+            eid = str(rec.get("id", ""))
+            if eid in adjustments:
+                x, y, w, h = adjustments[eid]
+                rec["_adjusted_rect"] = (x, y, w, h)
+    except ImportError:
+        pass  # Layout Agent 模块未安装，使用 _scaled_rect
+    except Exception:
+        pass  # 任何异常 fallback 到 _scaled_rect
 
     text_records = []
     for rec in data["records"]:
