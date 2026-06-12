@@ -135,6 +135,20 @@ python main.py
 4. 等待你选择大纲结构（点击卡片 → 点击「确认大纲」）
 5. 自动生成完整 PPT 并打开
 
+## 📸 预览
+
+### 配色方案选择
+![配色预览](docs/color_preview.png)
+
+### 大纲结构选择
+![大纲预览](docs/outline_preview.png)
+
+### 幻灯片 HTML 预览
+![HTML 预览](docs/slides_html.png)
+
+### 生成的 PPT
+![PPT 样例](docs/ppt_sample.png)
+
 ## 🎨 支持的配色特性
 
 - **纯色配色** - 传统的十六进制颜色 `#1976D2`
