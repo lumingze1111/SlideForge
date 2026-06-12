@@ -229,27 +229,6 @@ export DEEPSEEK_API_KEY='your-deepseek-api-key-here'
 echo "DEEPSEEK_API_KEY=your-deepseek-api-key-here" > .env
 ```
 
-### 其他配置
-
-修改 `main.py` 中的 LLM 配置：
-
-```python
-llm = ChatOpenAI(
-    base_url="https://api.deepseek.com",      # API 端点
-    api_key=os.getenv("DEEPSEEK_API_KEY"),    # 从环境变量读取
-    model="deepseek-chat",                     # 模型名称
-    temperature=0.7,                           # 生成温度
-)
-```
-
-也可以修改默认主题、受众和页数：
-
-```python
-topic = "你的演示主题"
-audience = "目标受众"
-pages = 8  # 幻灯片页数
-```
-
 ## 🎯 使用场景
 
 - 快速制作演示文稿原型
