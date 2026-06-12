@@ -27,6 +27,7 @@ def convert_html_to_pptx(
     validate_gradients: bool = True,
     max_validate_attempts: int = 3,
     screenshot_mode: bool = False,
+    audit: bool = False,
 ) -> str:
     """将 HTML 幻灯片文件转换为 PPTX。
 
@@ -101,14 +102,19 @@ def convert_html_to_pptx(
             import shutil
             shutil.copyfile(intermediate, out_path)
 
-        # ── 注入演讲者备注 ──────────────────────────────────────────
-        if notes_map:
-            _inject_notes(str(out_path), notes_map, verbose=verbose)
+            # ── 注入演讲者备注 ──────────────────────────────────────
+            if notes_map:
+                _inject_notes(str(out_path), notes_map, verbose=verbose)
 
-        # ── 整体格式校验（截图模式下跳过渐变校验，截图已捕获渐变）─────
-        if validate_gradients and not screenshot_mode:
-            _run_format_validation(measure_html, out_path, measurement,
-                                   max_validate_attempts, verbose)
+            # ── 整体格式校验（截图模式下跳过渐变校验）─────────────────
+            if validate_gradients and not screenshot_mode:
+                _run_format_validation(measure_html, out_path, measurement,
+                                       max_validate_attempts, verbose)
+
+            # ── 视觉审计（须在 temp dir 存活期间，因为需读取 HTML 参考截图）─
+            if audit:
+                screenshots_dir = tmp_dir / (meas_json.stem + "_screenshots")
+                _run_visual_audit(out_path, measurement, screenshots_dir, verbose)
     finally:
         if cleanup_html is not None and cleanup_html.exists():
             try:
@@ -121,6 +127,53 @@ def convert_html_to_pptx(
               f"({out_path.stat().st_size:,} B)")
 
     return str(out_path.absolute())
+
+
+def _run_visual_audit(
+    out_path: Path, measurement: dict, screenshots_dir: Path, verbose: bool,
+) -> None:
+    """Stage 5 视觉审计：PPTX → PNG 渲染 + 双栏对比图 + contact sheet。
+
+    产出 `<pptx>_audit/` 目录，包含：
+    - slide_NN_compare.png — 每页 HTML|PPT 对比图
+    - audit_contact_NN.png  — 缩略总览
+    - audit_index.json     — 审计元数据
+    - audit_prompt.md      — 审计指南
+    """
+    from slideforge.pptx_renderer import try_render_pptx
+    from slideforge.visual_audit import build_audit_package
+
+    if not screenshots_dir.exists() or not list(screenshots_dir.glob("slide_*.png")):
+        if verbose:
+            print("[audit] ⚠ 未找到 HTML 参考截图，跳过对比图生成")
+        return
+
+    audit_dir = out_path.parent / (out_path.stem + "_audit")
+    ppt_screenshots_dir = audit_dir / "ppt_screenshots"
+
+    if verbose:
+        print("[audit] 正在渲染 PPTX → PNG ...")
+    engine, count = try_render_pptx(out_path, ppt_screenshots_dir)
+    if engine is None:
+        print("[audit] ⚠ 未找到可用的 PPTX 渲染器（需 LibreOffice 或 PowerPoint COM）")
+        print("[audit]   视觉审计物料未生成。安装 LibreOffice 后重试：")
+        print("[audit]     brew install --cask libreoffice")
+        return
+
+    if verbose:
+        print(f"[audit] 渲染完成: {count} 页 ({engine})")
+        print("[audit] 正在生成对比图 ...")
+    result = build_audit_package(
+        screenshots_dir, ppt_screenshots_dir, audit_dir, out_path,
+    )
+
+    if verbose:
+        n = result.get("pages", 0)
+        sheets = len(result.get("contact_sheets", []))
+        print(f"[audit] ✓ {n} 页对比图, {sheets} 张 contact sheet")
+        print(f"[audit]   审计目录: {audit_dir}")
+        print(f"[audit]   审计指南: {audit_dir / 'audit_prompt.md'}")
+        print(f"[audit]   → 请打开 contact sheet 或单页 compare 图审查视觉差异")
 
 
 def _extract_notes(html_path: Path) -> dict[int, str]:
