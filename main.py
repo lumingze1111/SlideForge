@@ -100,8 +100,15 @@ def main() -> None:
 
     # ── 步骤 5：导出 PPTX ────────────────────────────────────────────────
     output_pptx = str(output_dir / f"slides_{topic[:20].replace(' ', '_')}.pptx")
-    print(f"\n  📊 正在导出 PPTX...")
-    convert_html_to_pptx(slides_html_path, output_pptx, verbose=True)
+    print(f"\n  📊 正在导出 PPTX（LLM 直接渲染）...")
+    llm_convert_script = str(Path(__file__).parent / "tools" / "llm_direct_convert.py")
+    result = subprocess.run(
+        [sys.executable, llm_convert_script, "--html", slides_html_path, "--output", output_pptx],
+        capture_output=False, text=True,
+    )
+    if result.returncode != 0:
+        print(f"  ⚠ LLM 直接渲染失败 (exit {result.returncode})，回退到传统流水线...")
+        convert_html_to_pptx(slides_html_path, output_pptx, verbose=True)
     print(f"  ✓ PPTX 已生成：{output_pptx}")
     subprocess.run(["open", output_pptx], check=False)
 
