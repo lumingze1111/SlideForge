@@ -280,34 +280,40 @@ def run_layout_agent(
     agent = create_layout_agent(llm)
     elements_json = json.dumps(elements, ensure_ascii=False)
 
-    # 判断页面位置
+    # 判断页面位置：中间页硬编码强制右移 200px，首页/尾页走 LLM
     is_first = slide_index <= 1
     is_last = slide_index >= total_slides
     is_middle = not is_first and not is_last
 
     if is_middle:
-        position_hint = (
-            f"⚠️ 这是中间页（第 {slide_index}/{total_slides} 页）。\n"
-            f"中间页元素因中心缩放（init.x = orig.x - w×0.25）会偏左。\n"
-            f"必须对所有元素强制大幅右移：每个元素的 x 在 init.x 基础上增加 80-120px。\n"
-            f"即使是小元素也要至少右移 60px，大元素右移 100px 以上。\n"
+        FORCE_RIGHT_SHIFT = 200
+        result = {}
+        for el in elements:
+            eid = el["id"]
+            init = el["init"]
+            x = init["x"] + FORCE_RIGHT_SHIFT
+            y = init["y"]
+            w = init["w"]
+            h = init["h"]
+            # clamp to slide
+            if x + w > SLIDE_W_PX:
+                x = SLIDE_W_PX - w
+            if x < 0:
+                x = 0
+            result[eid] = (x, y, w, h)
+        return result
+
+    if is_first or is_last:
+        user_msg = (
+            f"这是{'首页' if is_first else '尾页'}（第 {slide_index}/{total_slides} 页），"
+            f"布局通常居中。检查是否有溢出或重叠，保持 init 位置即可。\n\n"
+            f"元素摘要：\n{elements_json}"
         )
     else:
-        position_hint = (
-            f"这是{'首页' if is_first else '尾页'}（第 {slide_index}/{total_slides} 页），"
-            f"布局通常居中，保持 init 位置即可。\n"
+        user_msg = (
+            f"幻灯片尺寸 {SLIDE_W_PX}×{SLIDE_H_PX}，共 {len(elements)} 个元素。\n\n"
+            f"元素摘要：\n{elements_json}"
         )
-
-    user_msg = (
-        f"幻灯片尺寸 {SLIDE_W_PX}×{SLIDE_H_PX}，共 {len(elements)} 个元素。\n\n"
-        f"{position_hint}\n"
-        f"任务：\n"
-        f"1. 所有元素的 init 位置是中心缩放的起点，中间页元素必向右移 80-120px，小元素至少 60px\n"
-        f"2. 同列元素 x 保持一致，同行元素 y 保持一致\n"
-        f"3. w 和 h 必须等于 init 中的值，严禁改动尺寸\n"
-        f"4. 只放入需要调整的元素，不需要改动的不要放\n\n"
-        f"元素摘要：\n{elements_json}"
-    )
 
     start_time = time.perf_counter()
     best_adjustments: dict | None = None
