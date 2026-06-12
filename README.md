@@ -168,6 +168,30 @@ convert_html_to_pptx('slides.html', 'output.pptx')
 
 ---
 
+## 📸 效果预览
+
+> 以下为「库里」主题的完整生成结果。
+
+### 配色方案选择
+![配色预览](docs/color_preview.png)
+
+### 大纲结构选择
+![大纲预览](docs/outline_preview.png)
+
+### 幻灯片 HTML 预览
+![HTML 预览](docs/slides_html.png)
+
+### 生成的 PPTX
+![PPT 样例](docs/ppt_sample.png)
+
+### 下载演示文件
+- [📄 幻灯片 HTML](docs/slides_库里.html) — 浏览器中查看完整幻灯片
+- [📊 幻灯片 PPTX](docs/slides_库里.pptx) — 下载 PowerPoint 文件
+- [🎨 配色选择页](docs/slideforge_preview.html) — 交互式配色方案选择
+- [📋 大纲选择页](docs/slideforge_outline_preview.html) — 交互式大纲结构选择
+
+---
+
 ## 技术栈
 
 | 层 | 技术 |

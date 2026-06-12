@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SlideForge 配色方案预览</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #111827;
+    color: #e0e0e0;
+    padding: 40px 20px 120px;
+}
+.container { max-width: 1400px; margin: 0 auto; }
+h1 {
+    text-align: center;
+    font-size: 28px;
+    margin-bottom: 8px;
+    color: #fff;
+}
+.subtitle {
+    text-align: center;
+    font-size: 14px;
+    color: #6b7280;
+    margin-bottom: 40px;
+}
+.slide-card {
+    background: #1f2937;
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 32px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    border: 3px solid transparent;
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+    position: relative;
+}
+.slide-card:hover {
+    border-color: #4b83ff;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(75,131,255,0.25);
+}
+.slide-card.selected {
+    border-color: #4ade80;
+    box-shadow: 0 0 0 4px rgba(74,222,128,0.2), 0 8px 32px rgba(0,0,0,0.5);
+}
+.selected-badge {
+    display: none;
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: #4ade80;
+    color: #111827;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 4px 14px;
+    border-radius: 20px;
+    z-index: 10;
+}
+.slide-card.selected .selected-badge {
+    display: inline-block;
+}
+.slide-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+.slide-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #fff;
+}
+.slide-badge {
+    display: inline-block;
+    padding: 4px 14px;
+    background: #374151;
+    color: #9ca3af;
+    border-radius: 20px;
+    font-size: 13px;
+}
+.slide-preview-wrapper {
+    width: 100%;
+    overflow-x: auto;
+}
+.slide-preview {
+    width: 1280px;
+    height: 720px;
+    margin: 0 auto;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+    position: relative;
+    pointer-events: none;
+}
+.slide-info {
+    display: flex;
+    gap: 20px;
+    margin-top: 16px;
+    font-size: 13px;
+    align-items: center;
+}
+.color-palette { display: flex; gap: 6px; flex-wrap: wrap; }
+.color-chip {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    border: 2px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+}
+.reasoning { flex: 1; color: #9ca3af; line-height: 1.6; }
+
+/* 底部固定确认栏 */
+.confirm-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #1f2937;
+    border-top: 1px solid #374151;
+    padding: 16px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 100;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+}
+.confirm-hint {
+    font-size: 14px;
+    color: #9ca3af;
+}
+.confirm-hint span {
+    color: #4ade80;
+    font-weight: 600;
+}
+.confirm-btn {
+    background: #4ade80;
+    color: #111827;
+    border: none;
+    padding: 12px 40px;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+}
+.confirm-btn:hover { background: #22c55e; transform: scale(1.03); }
+.confirm-btn:disabled {
+    background: #374151;
+    color: #6b7280;
+    cursor: not-allowed;
+    transform: none;
+}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🎨 SlideForge 配色方案预览</h1>
+<p class="subtitle">点击方案卡片选择，然后点击底部「确认方案」按钮</p>
+
+
+<div class="slide-card" data-index="0" onclick="selectCard(this)">
+    <div class="selected-badge">✓ 已选择</div>
+    <div class="slide-meta">
+        <div class="slide-title">1. 库里金州荣耀 - 冠军辉煌系</div>
+        <div class="slide-badge">bold</div>
+    </div>
+    <div class="slide-preview-wrapper">
+        <div class="slide-preview" style="background: linear-gradient(135deg, #1a237e 0%, #ffd700 100%); color: #ffffff;">
+            <div style="padding: 60px 80px 0 80px;">
+                <h2 style="font-size: 48px; font-weight: 700; color: #ffd700; margin-bottom: 16px;">
+                    库里
+                </h2>
+                <div style="width: 120px; height: 4px; background: #ff6f00; margin-bottom: 40px;"></div>
+            </div>
+            <div style="padding: 0 80px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+                    <div>
+                        <h3 style="font-size: 28px; color: #ffffff; margin-bottom: 20px; font-weight: 600;">核心观点</h3>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #b0bec5;">
+                                <span style="position: absolute; left: 0; color: #ff6f00;">▸</span>主题核心要素一
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #b0bec5;">
+                                <span style="position: absolute; left: 0; color: #ff6f00;">▸</span>主题核心要素二
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #b0bec5;">
+                                <span style="position: absolute; left: 0; color: #ff6f00;">▸</span>主题核心要素三
+                            </li>
+                        </ul>
+                    </div>
+                    <div style="background: #263238; padding: 32px; border-radius: 12px; border: 2px solid #ffd700;">
+                        <h4 style="font-size: 22px; color: #ffd700; margin-bottom: 16px; font-weight: 600;">关键数据</h4>
+                        <div style="margin-bottom: 20px;">
+                            <div style="font-size: 48px; font-weight: 700; color: #ff6f00;">100%</div>
+                            <div style="font-size: 16px; color: #b0bec5;">主题相关指标</div>
+                        </div>
+                        <div style="font-size: 14px; color: #b0bec5; line-height: 1.6;">以勇士队经典蓝金配色致敬库里，金色象征辉煌与三分雨，深蓝背景稳定有力。</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-info">
+        <div class="color-palette">
+            <div class="color-chip" style="background: linear-gradient(135deg, #1a237e 0%, #ffd700 100%);" title="gradient_bg: linear-gradient(135deg, #1a237e 0%, #ffd700 100%)"></div>
+<div class="color-chip" style="background-color: #ffd700;" title="primary: #ffd700"></div>
+<div class="color-chip" style="background-color: #1a237e;" title="secondary: #1a237e"></div>
+<div class="color-chip" style="background-color: #ff6f00;" title="accent: #ff6f00"></div>
+<div class="color-chip" style="background-color: #ffffff;" title="text_primary: #ffffff"></div>
+<div class="color-chip" style="background-color: #b0bec5;" title="text_secondary: #b0bec5"></div>
+<div class="color-chip" style="background-color: #263238;" title="surface: #263238"></div>
+<div class="color-chip" style="background-color: #37474f;" title="card_bg: #37474f"></div>
+<div class="color-chip" style="background-color: #ffd700;" title="border: #ffd700"></div>
+
+        </div>
+        <div class="reasoning">
+            <strong>配色数量：</strong>9 个 &nbsp;|&nbsp;
+            <strong>设计理由：</strong>以勇士队经典蓝金配色致敬库里，金色象征辉煌与三分雨，深蓝背景稳定有力。
+        </div>
+    </div>
+</div>
+
+
+<div class="slide-card" data-index="1" onclick="selectCard(this)">
+    <div class="selected-badge">✓ 已选择</div>
+    <div class="slide-meta">
+        <div class="slide-title">2. 库里三分雨夜 - 冷冽精准系</div>
+        <div class="slide-badge">minimalist</div>
+    </div>
+    <div class="slide-preview-wrapper">
+        <div class="slide-preview" style="background: linear-gradient(135deg, #0d47a1 0%, #00e5ff 100%); color: #ffffff;">
+            <div style="padding: 60px 80px 0 80px;">
+                <h2 style="font-size: 48px; font-weight: 700; color: #00e5ff; margin-bottom: 16px;">
+                    库里
+                </h2>
+                <div style="width: 120px; height: 4px; background: #76ff03; margin-bottom: 40px;"></div>
+            </div>
+            <div style="padding: 0 80px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+                    <div>
+                        <h3 style="font-size: 28px; color: #ffffff; margin-bottom: 20px; font-weight: 600;">核心观点</h3>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #b2ebf2;">
+                                <span style="position: absolute; left: 0; color: #76ff03;">▸</span>主题核心要素一
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #b2ebf2;">
+                                <span style="position: absolute; left: 0; color: #76ff03;">▸</span>主题核心要素二
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #b2ebf2;">
+                                <span style="position: absolute; left: 0; color: #76ff03;">▸</span>主题核心要素三
+                            </li>
+                        </ul>
+                    </div>
+                    <div style="background: #1a237e; padding: 32px; border-radius: 12px; border: 2px solid #00e5ff;">
+                        <h4 style="font-size: 22px; color: #00e5ff; margin-bottom: 16px; font-weight: 600;">关键数据</h4>
+                        <div style="margin-bottom: 20px;">
+                            <div style="font-size: 48px; font-weight: 700; color: #76ff03;">100%</div>
+                            <div style="font-size: 16px; color: #b2ebf2;">主题相关指标</div>
+                        </div>
+                        <div style="font-size: 14px; color: #b2ebf2; line-height: 1.6;">冷蓝与冰蓝渐变模拟夜晚球场灯光，亮绿点缀呼应库里标志性超远三分，简洁利落。</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-info">
+        <div class="color-palette">
+            <div class="color-chip" style="background: linear-gradient(135deg, #0d47a1 0%, #00e5ff 100%);" title="gradient_bg: linear-gradient(135deg, #0d47a1 0%, #00e5ff 100%)"></div>
+<div class="color-chip" style="background-color: #00e5ff;" title="primary: #00e5ff"></div>
+<div class="color-chip" style="background-color: #0d47a1;" title="secondary: #0d47a1"></div>
+<div class="color-chip" style="background-color: #76ff03;" title="accent: #76ff03"></div>
+<div class="color-chip" style="background-color: #ffffff;" title="text_primary: #ffffff"></div>
+<div class="color-chip" style="background-color: #b2ebf2;" title="text_secondary: #b2ebf2"></div>
+<div class="color-chip" style="background-color: #1a237e;" title="surface: #1a237e"></div>
+<div class="color-chip" style="background-color: #283593;" title="card_bg: #283593"></div>
+<div class="color-chip" style="background-color: #00e5ff;" title="border: #00e5ff"></div>
+
+        </div>
+        <div class="reasoning">
+            <strong>配色数量：</strong>9 个 &nbsp;|&nbsp;
+            <strong>设计理由：</strong>冷蓝与冰蓝渐变模拟夜晚球场灯光，亮绿点缀呼应库里标志性超远三分，简洁利落。
+        </div>
+    </div>
+</div>
+
+
+<div class="slide-card" data-index="2" onclick="selectCard(this)">
+    <div class="selected-badge">✓ 已选择</div>
+    <div class="slide-meta">
+        <div class="slide-title">3. 库里萌神能量 - 活力励志系</div>
+        <div class="slide-badge">playful</div>
+    </div>
+    <div class="slide-preview-wrapper">
+        <div class="slide-preview" style="background: radial-gradient(circle, #ffb300 0%, #ff6f00 100%); color: #ffffff;">
+            <div style="padding: 60px 80px 0 80px;">
+                <h2 style="font-size: 48px; font-weight: 700; color: #ff6f00; margin-bottom: 16px;">
+                    库里
+                </h2>
+                <div style="width: 120px; height: 4px; background: #ffffff; margin-bottom: 40px;"></div>
+            </div>
+            <div style="padding: 0 80px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+                    <div>
+                        <h3 style="font-size: 28px; color: #ffffff; margin-bottom: 20px; font-weight: 600;">核心观点</h3>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #ffe082;">
+                                <span style="position: absolute; left: 0; color: #ffffff;">▸</span>主题核心要素一
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #ffe082;">
+                                <span style="position: absolute; left: 0; color: #ffffff;">▸</span>主题核心要素二
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #ffe082;">
+                                <span style="position: absolute; left: 0; color: #ffffff;">▸</span>主题核心要素三
+                            </li>
+                        </ul>
+                    </div>
+                    <div style="background: #3e2723; padding: 32px; border-radius: 12px; border: 2px solid #ffb300;">
+                        <h4 style="font-size: 22px; color: #ff6f00; margin-bottom: 16px; font-weight: 600;">关键数据</h4>
+                        <div style="margin-bottom: 20px;">
+                            <div style="font-size: 48px; font-weight: 700; color: #ffffff;">100%</div>
+                            <div style="font-size: 16px; color: #ffe082;">主题相关指标</div>
+                        </div>
+                        <div style="font-size: 14px; color: #ffe082; line-height: 1.6;">暖橙与金黄渐变传递库里阳光般的亲和力与正能量，适合青少年励志场景。</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-info">
+        <div class="color-palette">
+            <div class="color-chip" style="background: radial-gradient(circle, #ffb300 0%, #ff6f00 100%);" title="gradient_bg: radial-gradient(circle, #ffb300 0%, #ff6f00 100%)"></div>
+<div class="color-chip" style="background-color: #ff6f00;" title="primary: #ff6f00"></div>
+<div class="color-chip" style="background-color: #ffb300;" title="secondary: #ffb300"></div>
+<div class="color-chip" style="background-color: #ffffff;" title="accent: #ffffff"></div>
+<div class="color-chip" style="background-color: #ffffff;" title="text_primary: #ffffff"></div>
+<div class="color-chip" style="background-color: #ffe082;" title="text_secondary: #ffe082"></div>
+<div class="color-chip" style="background-color: #3e2723;" title="surface: #3e2723"></div>
+<div class="color-chip" style="background-color: #4e342e;" title="card_bg: #4e342e"></div>
+<div class="color-chip" style="background-color: #ffb300;" title="border: #ffb300"></div>
+
+        </div>
+        <div class="reasoning">
+            <strong>配色数量：</strong>9 个 &nbsp;|&nbsp;
+            <strong>设计理由：</strong>暖橙与金黄渐变传递库里阳光般的亲和力与正能量，适合青少年励志场景。
+        </div>
+    </div>
+</div>
+
+
+<div class="slide-card" data-index="3" onclick="selectCard(this)">
+    <div class="selected-badge">✓ 已选择</div>
+    <div class="slide-meta">
+        <div class="slide-title">4. 库里王朝底蕴 - 尊贵沉稳系</div>
+        <div class="slide-badge">elegant</div>
+    </div>
+    <div class="slide-preview-wrapper">
+        <div class="slide-preview" style="background: linear-gradient(135deg, #1b5e20 0%, #004d40 100%); color: #ffffff;">
+            <div style="padding: 60px 80px 0 80px;">
+                <h2 style="font-size: 48px; font-weight: 700; color: #c5e1a5; margin-bottom: 16px;">
+                    库里
+                </h2>
+                <div style="width: 120px; height: 4px; background: #ffab00; margin-bottom: 40px;"></div>
+            </div>
+            <div style="padding: 0 80px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+                    <div>
+                        <h3 style="font-size: 28px; color: #ffffff; margin-bottom: 20px; font-weight: 600;">核心观点</h3>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #a5d6a7;">
+                                <span style="position: absolute; left: 0; color: #ffab00;">▸</span>主题核心要素一
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #a5d6a7;">
+                                <span style="position: absolute; left: 0; color: #ffab00;">▸</span>主题核心要素二
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #a5d6a7;">
+                                <span style="position: absolute; left: 0; color: #ffab00;">▸</span>主题核心要素三
+                            </li>
+                        </ul>
+                    </div>
+                    <div style="background: #1b5e20; padding: 32px; border-radius: 12px; border: 2px solid #c5e1a5;">
+                        <h4 style="font-size: 22px; color: #c5e1a5; margin-bottom: 16px; font-weight: 600;">关键数据</h4>
+                        <div style="margin-bottom: 20px;">
+                            <div style="font-size: 48px; font-weight: 700; color: #ffab00;">100%</div>
+                            <div style="font-size: 16px; color: #a5d6a7;">主题相关指标</div>
+                        </div>
+                        <div style="font-size: 14px; color: #a5d6a7; line-height: 1.6;">深绿渐变象征库里球场上的沉稳与团队根基，金色点缀提升尊贵感，适合高端营销。</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-info">
+        <div class="color-palette">
+            <div class="color-chip" style="background: linear-gradient(135deg, #1b5e20 0%, #004d40 100%);" title="gradient_bg: linear-gradient(135deg, #1b5e20 0%, #004d40 100%)"></div>
+<div class="color-chip" style="background-color: #c5e1a5;" title="primary: #c5e1a5"></div>
+<div class="color-chip" style="background-color: #004d40;" title="secondary: #004d40"></div>
+<div class="color-chip" style="background-color: #ffab00;" title="accent: #ffab00"></div>
+<div class="color-chip" style="background-color: #ffffff;" title="text_primary: #ffffff"></div>
+<div class="color-chip" style="background-color: #a5d6a7;" title="text_secondary: #a5d6a7"></div>
+<div class="color-chip" style="background-color: #1b5e20;" title="surface: #1b5e20"></div>
+<div class="color-chip" style="background-color: #2e7d32;" title="card_bg: #2e7d32"></div>
+<div class="color-chip" style="background-color: #c5e1a5;" title="border: #c5e1a5"></div>
+
+        </div>
+        <div class="reasoning">
+            <strong>配色数量：</strong>9 个 &nbsp;|&nbsp;
+            <strong>设计理由：</strong>深绿渐变象征库里球场上的沉稳与团队根基，金色点缀提升尊贵感，适合高端营销。
+        </div>
+    </div>
+</div>
+
+
+<div class="slide-card" data-index="4" onclick="selectCard(this)">
+    <div class="selected-badge">✓ 已选择</div>
+    <div class="slide-meta">
+        <div class="slide-title">5. 库里未来浪潮 - 赛博突破系</div>
+        <div class="slide-badge">bold</div>
+    </div>
+    <div class="slide-preview-wrapper">
+        <div class="slide-preview" style="background: linear-gradient(135deg, #12005e 0%, #ff0080 100%); color: #ffffff;">
+            <div style="padding: 60px 80px 0 80px;">
+                <h2 style="font-size: 48px; font-weight: 700; color: #ff0080; margin-bottom: 16px;">
+                    库里
+                </h2>
+                <div style="width: 120px; height: 4px; background: #00e5ff; margin-bottom: 40px;"></div>
+            </div>
+            <div style="padding: 0 80px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+                    <div>
+                        <h3 style="font-size: 28px; color: #ffffff; margin-bottom: 20px; font-weight: 600;">核心观点</h3>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #e0e0e0;">
+                                <span style="position: absolute; left: 0; color: #00e5ff;">▸</span>主题核心要素一
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #e0e0e0;">
+                                <span style="position: absolute; left: 0; color: #00e5ff;">▸</span>主题核心要素二
+                            </li>
+                            <li style="margin-bottom: 16px; padding-left: 24px; position: relative; font-size: 18px; color: #e0e0e0;">
+                                <span style="position: absolute; left: 0; color: #00e5ff;">▸</span>主题核心要素三
+                            </li>
+                        </ul>
+                    </div>
+                    <div style="background: #1a0033; padding: 32px; border-radius: 12px; border: 2px solid #ff0080;">
+                        <h4 style="font-size: 22px; color: #ff0080; margin-bottom: 16px; font-weight: 600;">关键数据</h4>
+                        <div style="margin-bottom: 20px;">
+                            <div style="font-size: 48px; font-weight: 700; color: #00e5ff;">100%</div>
+                            <div style="font-size: 16px; color: #e0e0e0;">主题相关指标</div>
+                        </div>
+                        <div style="font-size: 14px; color: #e0e0e0; line-height: 1.6;">紫粉渐变与赛博蓝碰撞，诠释库里打破传统、引领小球时代的革新精神，充满未来感。</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="slide-info">
+        <div class="color-palette">
+            <div class="color-chip" style="background: linear-gradient(135deg, #12005e 0%, #ff0080 100%);" title="gradient_bg: linear-gradient(135deg, #12005e 0%, #ff0080 100%)"></div>
+<div class="color-chip" style="background-color: #ff0080;" title="primary: #ff0080"></div>
+<div class="color-chip" style="background-color: #12005e;" title="secondary: #12005e"></div>
+<div class="color-chip" style="background-color: #00e5ff;" title="accent: #00e5ff"></div>
+<div class="color-chip" style="background-color: #ffffff;" title="text_primary: #ffffff"></div>
+<div class="color-chip" style="background-color: #e0e0e0;" title="text_secondary: #e0e0e0"></div>
+<div class="color-chip" style="background-color: #1a0033;" title="surface: #1a0033"></div>
+<div class="color-chip" style="background-color: #2d004f;" title="card_bg: #2d004f"></div>
+<div class="color-chip" style="background-color: #ff0080;" title="border: #ff0080"></div>
+
+        </div>
+        <div class="reasoning">
+            <strong>配色数量：</strong>9 个 &nbsp;|&nbsp;
+            <strong>设计理由：</strong>紫粉渐变与赛博蓝碰撞，诠释库里打破传统、引领小球时代的革新精神，充满未来感。
+        </div>
+    </div>
+</div>
+
+
+</div>
+
+<!-- 底部确认栏 -->
+<div class="confirm-bar">
+    <div class="confirm-hint" id="hint">请先点击上方任意方案卡片选择</div>
+    <button class="confirm-btn" id="confirmBtn" disabled onclick="confirmSelection()">确认方案</button>
+</div>
+
+<script>
+const PORT = 7788;
+let selectedIndex = null;
+
+function selectCard(el) {
+    document.querySelectorAll('.slide-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    selectedIndex = parseInt(el.dataset.index);
+    const title = el.querySelector('.slide-title').textContent.trim();
+    document.getElementById('hint').innerHTML = '已选择：<span>' + title + '</span>';
+    document.getElementById('confirmBtn').disabled = false;
+}
+
+function confirmSelection() {
+    if (selectedIndex === null) return;
+    const btn = document.getElementById('confirmBtn');
+    btn.disabled = true;
+    btn.textContent = '提交中…';
+    fetch('http://localhost:' + PORT + '/select', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({index: selectedIndex})
+    })
+    .then(r => r.json())
+    .then(() => {
+        btn.textContent = '✓ 已确认，正在生成 PPT…';
+        btn.style.background = '#22c55e';
+        document.getElementById('hint').innerHTML = '<span>方案已提交！窗口即将关闭…</span>';
+        setTimeout(() => window.close(), 800);
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.textContent = '确认方案';
+        alert('提交失败：' + err.message);
+    });
+}
+</script>
+</body>
+</html>
