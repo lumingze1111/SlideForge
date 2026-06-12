@@ -423,7 +423,8 @@ def verify_position(rec: dict, shape: dict, slide_w: float = SLIDE_W_PX,
 
 # ── Main diff ─────────────────────────────────────────────────────────────────
 
-def diff_decks(measurement: dict, pptx_path: Path) -> dict:
+def diff_decks(measurement: dict, pptx_path: Path,
+              screenshot_mode: bool = False) -> dict:
     slides_meas = measurement.get('slides') or [measurement]
     slides_pptx = load_pptx_shapes(pptx_path)
 
@@ -438,6 +439,8 @@ def diff_decks(measurement: dict, pptx_path: Path) -> dict:
 
     for i, (m, shapes) in enumerate(zip(slides_meas, slides_pptx), start=1):
         records = m.get('records') or []
+        if screenshot_mode:
+            records = [r for r in records if r.get('kind') == 'text']
         match = match_records_to_shapes(records, shapes)
 
         slide_issues = []
@@ -525,7 +528,8 @@ def is_clean(report: dict) -> bool:
 
 # ── Style patching ────────────────────────────────────────────────────────────
 
-def collect_style_fixes(report: dict, measurement: dict, pptx_path: Path) -> dict:
+def collect_style_fixes(report: dict, measurement: dict, pptx_path: Path,
+                        screenshot_mode: bool = False) -> dict:
     """For each slide with style issues, collect a list of run-level patches.
 
     Returns: {slide_idx_0_based: [{shape_idx, run_idx, color?, sz?, bold?, italic?}]}
@@ -540,6 +544,8 @@ def collect_style_fixes(report: dict, measurement: dict, pptx_path: Path) -> dic
         if idx >= len(slides_meas) or idx >= len(slides_pptx):
             continue
         records = slides_meas[idx].get('records') or []
+        if screenshot_mode:
+            records = [r for r in records if r.get('kind') == 'text']
         shapes = slides_pptx[idx]
         match = match_records_to_shapes(records, shapes)
         rec_to_shape = {ri: si for ri, si in match['pairs']}

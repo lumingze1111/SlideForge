@@ -1173,6 +1173,7 @@ def measure(html_path: Path, out_json: Path | None = None, *,
             single_index: int | None = None,
             only_indices: set[int] | None = None,
             no_screenshots: bool = True,
+            screenshot_mode: bool = False,
             verbose: bool = True) -> dict:
     """实测 HTML 中所有 slide。返回 measurement dict。
     out_json 不为 None 时同步写盘；svg 截图始终落盘到 out_json 旁的 _svg_assets/。
@@ -1247,7 +1248,7 @@ def measure(html_path: Path, out_json: Path | None = None, *,
             anchor = Path(tempfile.mkdtemp(prefix="h2p_meas_")) / "measurements.json"
 
         screenshots_dir = Path(str(anchor.with_suffix("")) + "_screenshots")
-        if not no_screenshots:
+        if not no_screenshots or screenshot_mode:
             screenshots_dir.mkdir(exist_ok=True, parents=True)
 
         svg_dir = anchor.parent / (anchor.stem + "_svg_assets")
@@ -1303,19 +1304,22 @@ def measure(html_path: Path, out_json: Path | None = None, *,
                     }""")
             data = page.evaluate(EXTRACT_JS, i)
 
-            # 统一截图四类 marker 元素：deco_snapshot / svg / canvas / img
-            # 类型差异封装在 _MARKER_SHOOT_SPECS（pre/post JS、omit_background）
-            _shoot_marker_records(page, data.get("records", []), svg_dir)
+            # 逐元素截图（deco_snapshot / svg / canvas / img）— 截图模式下跳过
+            if not screenshot_mode:
+                _shoot_marker_records(page, data.get("records", []), svg_dir)
 
             slides_data.append(data)
-            if verbose:
-                if no_screenshots:
-                    print(f"  slide {i+1:02d}: {len(data.get('records', []))} records")
-                else:
-                    ss = screenshots_dir / f"slide_{i+1:02d}.png"
-                    # 当前 active slide 总是带 data-pptx-target；不依赖 adapter selector
-                    page.locator("[data-pptx-target]").first.screenshot(path=str(ss))
+
+            # 全页截图 — 截图模式下写入 slide 数据供 assemble 用作背景
+            if not no_screenshots or screenshot_mode:
+                ss = screenshots_dir / f"slide_{i+1:02d}.png"
+                page.locator("[data-pptx-target]").first.screenshot(path=str(ss))
+                if screenshot_mode:
+                    data["slide"]["screenshot"] = str(ss)
+                if verbose:
                     print(f"  slide {i+1:02d}: {len(data.get('records', []))} records → {ss.name}")
+            elif verbose:
+                print(f"  slide {i+1:02d}: {len(data.get('records', []))} records")
 
         if single_index is not None:
             payload = slides_data[0]
@@ -1341,13 +1345,16 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     flags = {a for a in sys.argv[1:] if a.startswith("--")}
     no_screenshots = "--no-screenshots" in flags
+    screenshot_mode = "--screenshot-mode" in flags
     if len(args) < 2:
         print(__doc__)
         sys.exit(1)
     html_path = Path(args[0]).resolve()
     out_json = Path(args[1]).resolve()
     single_index = int(args[2]) if len(args) >= 3 else None
-    measure(html_path, out_json, single_index=single_index, no_screenshots=no_screenshots)
+    measure(html_path, out_json, single_index=single_index,
+            no_screenshots=not screenshot_mode if screenshot_mode else no_screenshots,
+            screenshot_mode=screenshot_mode)
 
 
 if __name__ == "__main__":

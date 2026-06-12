@@ -121,6 +121,10 @@ pip install langchain-openai pydantic python-pptx
 ## 🚀 快速开始
 
 ```bash
+# 设置 API 密钥
+export DEEPSEEK_API_KEY='your-api-key-here'
+
+# 启动程序
 python main.py
 ```
 

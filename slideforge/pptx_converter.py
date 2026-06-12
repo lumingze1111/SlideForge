@@ -26,6 +26,7 @@ def convert_html_to_pptx(
     verbose: bool = True,
     validate_gradients: bool = True,
     max_validate_attempts: int = 3,
+    screenshot_mode: bool = False,
 ) -> str:
     """将 HTML 幻灯片文件转换为 PPTX。
 
@@ -36,6 +37,7 @@ def convert_html_to_pptx(
         verbose: 是否打印详细日志。
         validate_gradients: 装配后校验渐变是否与 HTML 匹配，不匹配则直接修补 PPTX。
         max_validate_attempts: 渐变校验循环最大尝试次数。
+        screenshot_mode: 截图模式 —— 整页截图作背景，仅渲染透明文字叠层。
 
     Returns:
         输出 .pptx 的绝对路径。
@@ -78,7 +80,10 @@ def convert_html_to_pptx(
             intermediate = tmp_dir / "no_fonts.pptx"
 
             # 测量
-            measurement = measure(measure_html, meas_json, no_screenshots=True, verbose=verbose)
+            measurement = measure(measure_html, meas_json,
+                                  no_screenshots=not screenshot_mode,
+                                  screenshot_mode=screenshot_mode,
+                                  verbose=verbose)
             t1 = time.perf_counter()
             if verbose:
                 print(f"[converter] 测量完成: {len(measurement.get('slides', []))} 页, "
@@ -87,7 +92,7 @@ def convert_html_to_pptx(
             # 装配
             if verbose:
                 print("[converter] 正在装配 OOXML...")
-            assemble(measurement, intermediate)
+            assemble(measurement, intermediate, screenshot_mode=screenshot_mode)
             t2 = time.perf_counter()
             if verbose:
                 print(f"[converter] 装配完成: {t2 - t1:.2f}s")
@@ -100,8 +105,8 @@ def convert_html_to_pptx(
         if notes_map:
             _inject_notes(str(out_path), notes_map, verbose=verbose)
 
-        # ── 整体格式校验（渐变 + 文本样式 + 元素映射）─────────────────
-        if validate_gradients:
+        # ── 整体格式校验（截图模式下跳过渐变校验，截图已捕获渐变）─────
+        if validate_gradients and not screenshot_mode:
             _run_format_validation(measure_html, out_path, measurement,
                                    max_validate_attempts, verbose)
     finally:

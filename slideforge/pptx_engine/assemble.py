@@ -623,8 +623,30 @@ def _split_gradient_body(body: str) -> list[str]:
     return parts
 
 
-def add_background(slide, rgb, background_image: str | None = None):
-    """整页底色。支持渐变（通过 CSS backgroundImage）和纯色。"""
+def _set_slide_background_image(slide, image_path: str):
+    """将 PNG 图片设为幻灯片背景。
+
+    使用 add_picture 添加全页图片，然后将其移到 spTree 最前（z-order 最底层），
+    确保文字叠层渲染在图片上方。
+    """
+
+    pic = slide.shapes.add_picture(image_path, 0, 0, SLIDE_W_EMU, SLIDE_H_EMU)
+
+    # 将 pic 元素移到 spTree 的最前面（z-order 最底层）
+    pic_el = pic._element
+    spTree = pic_el.getparent()
+    if spTree is not None:
+        spTree.remove(pic_el)
+        spTree.insert(2, pic_el)  # after nvGrpSpPr and grpSpPr
+
+
+def add_background(slide, rgb, background_image: str | None = None,
+                   screenshot_path: str | None = None,
+                   screenshot_mode: bool = False):
+    """整页底色。支持截图背景、渐变和纯色。"""
+    if screenshot_mode and screenshot_path:
+        _set_slide_background_image(slide, screenshot_path)
+        return
     gradient = _parse_gradient_from_css(background_image) if background_image else None
     if gradient:
         _apply_gradient_rect(slide, gradient)
@@ -1389,11 +1411,13 @@ def add_deco_snapshot(slide, rec):
     return pic
 
 
-def assemble_slide(slide, data, slide_index: int = 0, total_slides: int = 1):
-    """装配一张 slide。"""
+def assemble_slide(slide, data, slide_index: int = 0, total_slides: int = 1,
+                   screenshot_mode: bool = False):
+    """装配一张 slide。screenshot_mode=True 时用截图背景 + 仅渲染文本。"""
+    screenshot_path = data["slide"].get("screenshot") if screenshot_mode else None
     bg_rgb = parse_rgb(data["slide"]["background"])
     bg_image = data["slide"].get("backgroundImage", "")
-    add_background(slide, bg_rgb, bg_image)
+    add_background(slide, bg_rgb, bg_image, screenshot_path, screenshot_mode)
     has_native_gradient = bool(
         bg_image and bg_image != "none" and "gradient" in bg_image.lower()
     )
@@ -1414,12 +1438,32 @@ def assemble_slide(slide, data, slide_index: int = 0, total_slides: int = 1):
                 x, y, w, h = adjustments[eid]
                 rec["_adjusted_rect"] = (x, y, w, h)
     except ImportError:
-        pass  # Layout Agent 模块未安装
+        pass
     except Exception as e:
         import traceback
         print(f"[layout_agent] ERROR: {e}")
         traceback.print_exc()
 
+    # ── 渲染 ─────────────────────────────────────────────────────────
+    if screenshot_mode:
+        # 截图模式：只渲染文字，跳过所有其他类型（截图已捕获视觉外观）
+        for rec in data["records"]:
+            if rec["kind"] == "text":
+                # 清空 deco：截图已包含背景/边框/装饰，文字需透明叠层
+                rec["deco"] = {
+                    "hasBg": False, "bg": "rgba(0, 0, 0, 0)",
+                    "borderTop": False, "borderBottom": False,
+                    "borderLeft": False, "borderRight": False,
+                    "borderColor": "", "borderTopColor": "", "borderBottomColor": "",
+                    "borderLeftColor": "", "borderRightColor": "",
+                    "borderTopWidth": 0, "borderBottomWidth": 0,
+                    "borderLeftWidth": 0, "borderRightWidth": 0,
+                    "borderRadius": "",
+                }
+                add_text_box(slide, rec)
+        return
+
+    # 传统模式：逐元素渲染
     text_records = []
     for rec in data["records"]:
         if rec["kind"] == "shape":
@@ -1447,7 +1491,7 @@ def assemble_slide(slide, data, slide_index: int = 0, total_slides: int = 1):
         add_text_box(slide, rec)
 
 
-def assemble(measurement, out_path: Path):
+def assemble(measurement, out_path: Path, screenshot_mode: bool = False):
     """measurement 可以是 dict（in-process 调用）或 Path（CLI 调用）。"""
     if isinstance(measurement, (str, Path)):
         data = json.loads(Path(measurement).read_text(encoding="utf-8"))
@@ -1467,7 +1511,8 @@ def assemble(measurement, out_path: Path):
 
     for i, sdata in enumerate(slides_data):
         slide = prs.slides.add_slide(blank_layout)
-        assemble_slide(slide, sdata, slide_index=i + 1, total_slides=len(slides_data))
+        assemble_slide(slide, sdata, slide_index=i + 1, total_slides=len(slides_data),
+                       screenshot_mode=screenshot_mode)
         print(f"  page {i+1:02d}: {len(sdata.get('records', []))} records, theme={sdata['slide']['theme']}")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
