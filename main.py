@@ -8,6 +8,7 @@ SlideForge - 完整独立的 PPT 生成流程
 3. 生成详细内容 → 渲染 HTML → 导出 PPTX
 """
 
+import os
 import sys
 from langchain_openai import ChatOpenAI
 from slideforge.agents.topic_analyzer import analyze_topic, print_suggestion
@@ -18,9 +19,15 @@ from slideforge.pptx_converter import convert_html_to_pptx
 
 
 def main() -> None:
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    if not api_key:
+        print("\n  ❌ 请设置环境变量 DEEPSEEK_API_KEY")
+        print("     export DEEPSEEK_API_KEY='your-api-key-here'\n")
+        sys.exit(1)
+
     llm = ChatOpenAI(
         base_url="https://api.deepseek.com",
-        api_key="sk-be370742a8c549eeb5a971664b2f7ac6",
+        api_key=api_key,
         model="deepseek-chat",
         temperature=0.7,
     )

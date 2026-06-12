@@ -207,12 +207,29 @@ SlideForge/
 
 ## ⚙️ 配置
 
+### API 密钥
+
+SlideForge 通过环境变量读取 API 密钥，**切勿直接在代码中硬编码密钥**。
+
+```bash
+# 设置 DeepSeek API 密钥
+export DEEPSEEK_API_KEY='your-deepseek-api-key-here'
+```
+
+你也可以将密钥写入 `.env` 文件（已加入 `.gitignore`，不会提交到仓库）：
+
+```bash
+echo "DEEPSEEK_API_KEY=your-deepseek-api-key-here" > .env
+```
+
+### 其他配置
+
 修改 `main.py` 中的 LLM 配置：
 
 ```python
 llm = ChatOpenAI(
     base_url="https://api.deepseek.com",      # API 端点
-    api_key="your-api-key-here",              # API 密钥
+    api_key=os.getenv("DEEPSEEK_API_KEY"),    # 从环境变量读取
     model="deepseek-chat",                     # 模型名称
     temperature=0.7,                           # 生成温度
 )
