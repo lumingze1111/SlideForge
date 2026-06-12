@@ -5,7 +5,7 @@ Usage:
 
 设计：
 - 标准 16:9 幻灯片 = 13.333" × 7.5" = 12192000 × 6858000 EMU
-- 测量视口 1920×1080 → 1 CSS px = 6350 EMU = 0.5 pt
+- 测量视口 1920×1080 → 1 CSS px = 6350 EMU, 元素/字体 1.5× 以中心缩放, 位置保持比例
 - pptx 内部直接走低层 lxml 操作 spPr / txBody，避开 python-pptx 高层 API 的限制
 """
 import json
@@ -25,7 +25,8 @@ SLIDE_H_PX = 1080
 SLIDE_W_EMU = 12192000      # 13.333"
 SLIDE_H_EMU = 6858000       # 7.5"
 PX_TO_EMU = SLIDE_W_EMU / SLIDE_W_PX  # 6350
-PX_TO_PT = 0.5
+PX_TO_PT = 0.5 * 1.5                    # 0.75 — 字体1.5倍(1920→13.333"空间基值0.5×1.5)
+SIZE_SCALE = 1.5                         # 元素尺寸以中心为基准缩放
 
 from slideforge.pptx_engine.embed_fonts import (
     family_alias_map, weighted_family_map, cjk_typefaces, cjk_for_style, style_of_typeface,
@@ -278,8 +279,73 @@ def cjk_font(font_family: str, latin_name: str) -> str:
     return cjk_for_style(latin_style)
 
 
-def px_to_emu(px: float) -> int:
-    return int(round(px * PX_TO_EMU))
+def px_to_emu(px: float, scale: float = 1.0) -> int:
+    """CSS px → EMU。scale=1.0 用于位置 (x,y)，scale=SIZE_SCALE 用于宽高/边距/线宽。"""
+    return int(round(px * PX_TO_EMU * scale))
+
+
+def _scaled_rect(rx: float, ry: float, rw: float, rh: float) -> tuple[int, int, int, int]:
+    """返回 (x_emu, y_emu, w_emu, h_emu)，元素以中心为基准缩放 SIZE_SCALE 倍。
+
+    尺寸按 SIZE_SCALE 放大，同时位置向左上偏移，使元素视觉中心保持不变，
+    避免元素向右下偏移。
+    """
+    offset = (SIZE_SCALE - 1.0) / 2.0  # 0.25
+    x = px_to_emu(rx - rw * offset)
+    y = px_to_emu(ry - rh * offset)
+    w = px_to_emu(rw, SIZE_SCALE)
+    h = px_to_emu(rh, SIZE_SCALE)
+    return _clamp_to_slide(x, y, w, h)
+
+
+def _clamp_to_slide(x: int, y: int, w: int, h: int) -> tuple[int, int, int, int]:
+    """确保元素不超出幻灯片边界。优先移动位置保留完整尺寸，仅当元素宽/高超过
+    幻灯片时裁剪尺寸。"""
+    sw, sh = SLIDE_W_EMU, SLIDE_H_EMU
+
+    # 宽度超过幻灯片 → 裁剪
+    if w > sw:
+        w = sw
+
+    # 水平：优先移动位置使元素完整可见
+    if x < 0:
+        x = 0
+    elif x + w > sw:
+        x = sw - w
+
+    # 高度超过幻灯片 → 裁剪
+    if h > sh:
+        h = sh
+
+    # 垂直：优先移动位置使元素完整可见
+    if y < 0:
+        y = 0
+    elif y + h > sh:
+        y = sh - h
+
+    return x, y, max(0, w), max(0, h)
+
+
+def _resolve_rect(rec, fallback_w=None, fallback_h=None):
+    """返回 (x_emu, y_emu, w_emu, h_emu)，优先使用 _adjusted_rect。
+
+    _adjusted_rect = (x, y, w, h) CSS px 绝对坐标，由 Layout Agent 输出。
+    位置转 EMU 用 scale=1.0，尺寸转 EMU 用 SIZE_SCALE（1.5×）。
+
+    fallback_w/fallback_h 覆盖 _scaled_rect 的尺寸参数
+    （用于 add_text_box 已单独算出 textbox 尺寸的情况）。
+    """
+    adjusted = rec.get("_adjusted_rect")
+    if adjusted:
+        x = px_to_emu(adjusted[0])
+        y = px_to_emu(adjusted[1])
+        w = px_to_emu(adjusted[2], SIZE_SCALE)
+        h = px_to_emu(adjusted[3], SIZE_SCALE)
+        return _clamp_to_slide(x, y, w, h)
+    r = rec["rect"]
+    return _scaled_rect(r["x"], r["y"],
+                        fallback_w if fallback_w is not None else r["w"],
+                        fallback_h if fallback_h is not None else r["h"])
 
 
 def _find_blank_layout(prs):
@@ -328,26 +394,14 @@ def _text_is_single_line(rec, max_fs: float) -> bool:
 
 
 def _text_box_size_px(rec, max_fs: float, is_single_line: bool) -> tuple[float, float]:
-    """textbox 几何严格 = HTML BCR width，避免几何外扩破坏 algn=ctr 视觉居中。
-    高度给一点宽裕，避免 PPT 行高比浏览器略高时底部被裁。
-    PPT 文字度量比浏览器稍宽的"防换行"靠 wrap='none' (单行) + tf.margin (内 padding 吸收)。
+    """textbox 几何 = HTML BCR × 1.12 余量。
+
+    PPT 与浏览器的字体度量存在系统性差异（同字号下 PPT 字宽略大），
+    在 1.5× 整体缩放后差异被放大导致文字溢出。给 12% 额外空间补偿，
+    远小于旧版 1.3×–1.4× 的垂直膨胀，不会造成段落间叠压。
     """
     r = rec["rect"]
-    style = rec.get("style") or {}
-    display = (style.get("display") or "").lower()
-    align_items = (style.get("alignItems") or "").lower()
-    # flex/grid 容器有 align-items:center/end 时，BCR 实际是容器 BCR（不是文字 BCR）。
-    # assemble 这边按 anchor=ctr/b 在 PPT 里做垂直定位 —— cy 必须严格 = r.h，
-    # 不能再 h*1.4 撑高，否则文字会被推到容器底部以下（用户看着就是"居中字怎么靠下了"）。
-    if ("flex" in display or "grid" in display) and align_items in ("center", "flex-end", "end"):
-        return r["w"], r["h"]
-    # 显式 <br> / \n 分行：浏览器已经精确测出多行 BCR，cy 严格 = r.h。
-    # 再 1.3x 撑高会把下方相邻段盖住（slide 17 链接段贴到上段"关键是..."同位置就是这个 bug）。
-    if _has_explicit_break(rec):
-        return r["w"], r["h"]
-    if is_single_line:
-        return r["w"], max(r["h"] * 1.4, max_fs * 1.6)
-    return r["w"], r["h"] * 1.3
+    return r["w"] * 1.12, r["h"] * 1.12
 
 
 def _prepare_text_layouts(records):
@@ -388,10 +442,11 @@ def _apply_rotation(shape, rec):
     rect = rec["rect"]
     cx_px = rect["x"] + rect["w"] / 2.0
     cy_px = rect["y"] + rect["h"] / 2.0
-    new_x = px_to_emu(cx_px - nat_w / 2.0)
-    new_y = px_to_emu(cy_px - nat_h / 2.0)
-    new_w = px_to_emu(nat_w)
-    new_h = px_to_emu(nat_h)
+    new_x = px_to_emu(cx_px) - px_to_emu(nat_w, SIZE_SCALE) // 2
+    new_y = px_to_emu(cy_px) - px_to_emu(nat_h, SIZE_SCALE) // 2
+    new_w = px_to_emu(nat_w, SIZE_SCALE)
+    new_h = px_to_emu(nat_h, SIZE_SCALE)
+    new_x, new_y, new_w, new_h = _clamp_to_slide(new_x, new_y, new_w, new_h)
     spPr = shape._element.find(qn("p:spPr"))
     if spPr is None:
         return
@@ -644,9 +699,9 @@ def add_shape_box(slide, rec):
     - 单侧或不对称：用 connectorStraightLine 单独画每条出现的边线
     """
     r = rec["rect"]
-    x, y, w, h = px_to_emu(r["x"]), px_to_emu(r["y"]), px_to_emu(r["w"]), px_to_emu(r["h"])
-    if w <= 0 or h <= 0:
+    if r["w"] <= 0 or r["h"] <= 0:
         return
+    x, y, w, h = _resolve_rect(rec)
     deco = rec.get("deco", {})
 
     sides = {
@@ -720,7 +775,7 @@ def add_shape_box(slide, rec):
             shape.line.fill.background()
         else:
             shape.line.color.rgb = make_rgb(border_rgba[:3])
-            shape.line.width = Emu(px_to_emu(widest or 1))
+            shape.line.width = Emu(px_to_emu(widest or 1, SIZE_SCALE))
             _set_line_alpha(shape, border_rgba[3])
         _apply_rotation(shape, rec)
         return shape
@@ -839,7 +894,7 @@ def _add_line(slide, x1, y1, x2, y2, color_rgb, width_px, alpha: float = 1.0):
     from pptx.enum.shapes import MSO_CONNECTOR
     line = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, x1, y1, x2, y2)
     line.line.color.rgb = make_rgb(color_rgb)
-    line.line.width = Emu(px_to_emu(width_px))
+    line.line.width = Emu(px_to_emu(width_px, SIZE_SCALE))
     _set_line_alpha(line, alpha)
     return line
 
@@ -894,7 +949,7 @@ def _fix_empty_paragraph_sizes(tf, style_font_size_px):
     把后续内容推出 textbox 砸到下方相邻段。
     """
     fs_px = float(style_font_size_px or 16) or 16
-    end_sz = max(100, int(round(fs_px * 0.5 * 100)))  # px → pt = px*0.5; OOXML sz=pt*100
+    end_sz = max(100, int(round(fs_px * PX_TO_PT * 100)))
     for para in tf.paragraphs:
         if para._p.find(qn("a:r")) is None:
             endR = para._p.find(qn("a:endParaRPr"))
@@ -941,14 +996,11 @@ def add_text_box(slide, rec):
         w_px = layout["w_px"]
         h_px = layout["h_px"]
 
-    x = px_to_emu(r["x"])
-    y = px_to_emu(r["y"])
-    w = px_to_emu(w_px)
-    h = px_to_emu(h_px)
-    if w <= 0:
-        w = px_to_emu(50)
-    if h <= 0:
-        h = px_to_emu(20)
+    if w_px <= 0:
+        w_px = 50.0
+    if h_px <= 0:
+        h_px = 20.0
+    x, y, w, h = _resolve_rect(rec, w_px, h_px)
 
     tb = slide.shapes.add_textbox(x, y, w, h)
     _apply_rotation(tb, rec)
@@ -987,10 +1039,10 @@ def add_text_box(slide, rec):
     # 这样：text-align:center 时居中点真的对齐 HTML 元素中心；
     #      padding-left 给 ::before marker 留位的设计在 PPT 也保持文字位置。
     style_padding = rec.get("style", {})
-    tf.margin_left = px_to_emu(style_padding.get("paddingLeft", 0) or 0)
-    tf.margin_right = px_to_emu(style_padding.get("paddingRight", 0) or 0)
-    tf.margin_top = px_to_emu(style_padding.get("paddingTop", 0) or 0)
-    tf.margin_bottom = px_to_emu(style_padding.get("paddingBottom", 0) or 0)
+    tf.margin_left = px_to_emu(style_padding.get("paddingLeft", 0) or 0, SIZE_SCALE)
+    tf.margin_right = px_to_emu(style_padding.get("paddingRight", 0) or 0, SIZE_SCALE)
+    tf.margin_top = px_to_emu(style_padding.get("paddingTop", 0) or 0, SIZE_SCALE)
+    tf.margin_bottom = px_to_emu(style_padding.get("paddingBottom", 0) or 0, SIZE_SCALE)
     # OOXML wrap 属性：square = 框内 wrap，none = 不 wrap 允许溢出
     # 必须与 tf.word_wrap 保持一致，否则 wrap 属性会覆盖 word_wrap 设置
     bodyPr = tf._txBody.find(qn("a:bodyPr"))
@@ -1238,8 +1290,8 @@ def _emit_run(paragraph, text, run, text_transform):
                 angle_deg += 360
             effect_lst = etree.SubElement(rPr, qn("a:effectLst"))
             outer = etree.SubElement(effect_lst, qn("a:outerShdw"))
-            outer.set("blurRad", str(int(blur * PX_TO_EMU)))
-            outer.set("dist", str(int(dist_px * PX_TO_EMU)))
+            outer.set("blurRad", str(int(blur * PX_TO_EMU * SIZE_SCALE)))
+            outer.set("dist", str(int(dist_px * PX_TO_EMU * SIZE_SCALE)))
             outer.set("dir", str(int(angle_deg * 60000)))
             outer.set("algn", "ctr")
             outer.set("rotWithShape", "0")
@@ -1280,11 +1332,8 @@ def add_svg_picture(slide, rec):
     if not png_path or not Path(png_path).exists():
         print(f"  [skip svg] no screenshot for {rec.get('marker', '?')}")
         return
-    slide.shapes.add_picture(png_path,
-                             px_to_emu(r["x"]),
-                             px_to_emu(r["y"]),
-                             px_to_emu(r["w"]),
-                             px_to_emu(r["h"]))
+    x, y, w, h = _resolve_rect(rec)
+    slide.shapes.add_picture(png_path, x, y, w, h)
 
 
 def add_img_picture(slide, rec):
@@ -1297,11 +1346,8 @@ def add_img_picture(slide, rec):
     if not png_path or not Path(png_path).exists():
         print(f"  [skip img] no screenshot for {rec.get('src', '?')}")
         return
-    slide.shapes.add_picture(png_path,
-                             px_to_emu(r["x"]),
-                             px_to_emu(r["y"]),
-                             px_to_emu(r["w"]),
-                             px_to_emu(r["h"]))
+    x, y, w, h = _resolve_rect(rec)
+    slide.shapes.add_picture(png_path, x, y, w, h)
 
 
 def add_canvas_picture(slide, rec):
@@ -1315,11 +1361,8 @@ def add_canvas_picture(slide, rec):
     if not png_path or not Path(png_path).exists():
         print(f"  [skip canvas] no screenshot for {rec.get('marker', '?')}")
         return
-    pic = slide.shapes.add_picture(png_path,
-                                    px_to_emu(r["x"]),
-                                    px_to_emu(r["y"]),
-                                    px_to_emu(r["w"]),
-                                    px_to_emu(r["h"]))
+    x, y, w, h = _resolve_rect(rec)
+    pic = slide.shapes.add_picture(png_path, x, y, w, h)
     _apply_rotation(pic, rec)
     return pic
 
@@ -1341,11 +1384,8 @@ def add_deco_snapshot(slide, rec):
     png_path = rec.get("screenshot")
     if not png_path or not Path(png_path).exists():
         return
-    pic = slide.shapes.add_picture(png_path,
-                                    px_to_emu(r["x"]),
-                                    px_to_emu(r["y"]),
-                                    px_to_emu(r["w"]),
-                                    px_to_emu(r["h"]))
+    x, y, w, h = _resolve_rect(rec)
+    pic = slide.shapes.add_picture(png_path, x, y, w, h)
     return pic
 
 
@@ -1358,6 +1398,23 @@ def assemble_slide(slide, data):
         bg_image and bg_image != "none" and "gradient" in bg_image.lower()
     )
     _prepare_text_layouts(data["records"])
+
+    # ── Layout Agent 调优 ───────────────────────────────────────────
+    try:
+        from slideforge.agents.layout_agent import run_layout_agent
+        from langchain_openai import ChatOpenAI
+
+        llm = ChatOpenAI(model="gpt-4o", temperature=0)
+        adjustments = run_layout_agent(llm, data["records"])
+        for rec in data["records"]:
+            eid = str(rec.get("id", ""))
+            if eid in adjustments:
+                x, y, w, h = adjustments[eid]
+                rec["_adjusted_rect"] = (x, y, w, h)
+    except ImportError:
+        pass  # Layout Agent 模块未安装，使用 _scaled_rect
+    except Exception:
+        pass  # 任何异常 fallback 到 _scaled_rect
 
     text_records = []
     for rec in data["records"]:
