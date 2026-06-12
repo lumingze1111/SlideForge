@@ -1389,7 +1389,7 @@ def add_deco_snapshot(slide, rec):
     return pic
 
 
-def assemble_slide(slide, data):
+def assemble_slide(slide, data, slide_index: int = 0, total_slides: int = 1):
     """装配一张 slide。"""
     bg_rgb = parse_rgb(data["slide"]["background"])
     bg_image = data["slide"].get("backgroundImage", "")
@@ -1405,7 +1405,9 @@ def assemble_slide(slide, data):
         from langchain_openai import ChatOpenAI
 
         llm = ChatOpenAI(model="gpt-4o", temperature=0)
-        adjustments = run_layout_agent(llm, data["records"])
+        adjustments = run_layout_agent(llm, data["records"],
+                                       slide_index=slide_index,
+                                       total_slides=total_slides)
         for rec in data["records"]:
             eid = str(rec.get("id", ""))
             if eid in adjustments:
@@ -1463,7 +1465,7 @@ def assemble(measurement, out_path: Path):
 
     for i, sdata in enumerate(slides_data):
         slide = prs.slides.add_slide(blank_layout)
-        assemble_slide(slide, sdata)
+        assemble_slide(slide, sdata, slide_index=i + 1, total_slides=len(slides_data))
         print(f"  page {i+1:02d}: {len(sdata.get('records', []))} records, theme={sdata['slide']['theme']}")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

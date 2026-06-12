@@ -251,6 +251,7 @@ def run_layout_agent(
     llm: ChatOpenAI,
     records: list[dict],
     slide_index: int = 0,
+    total_slides: int = 1,
     timeout_ms: int = 30000,
 ) -> dict[str, tuple[float, float, float, float]]:
     """对一张 slide 运行 Layout Agent。
@@ -258,7 +259,8 @@ def run_layout_agent(
     Args:
         llm: ChatOpenAI 实例。
         records: 当前 slide 的 records 列表（需要含 "id" 字段）。
-        slide_index: 幻灯片序号（仅用于日志）。
+        slide_index: 幻灯片序号（1-based）。
+        total_slides: 总幻灯片数。
         timeout_ms: 超时毫秒数。
 
     Returns:
@@ -278,13 +280,31 @@ def run_layout_agent(
     agent = create_layout_agent(llm)
     elements_json = json.dumps(elements, ensure_ascii=False)
 
+    # 判断页面位置
+    is_first = slide_index <= 1
+    is_last = slide_index >= total_slides
+    is_middle = not is_first and not is_last
+
+    if is_middle:
+        position_hint = (
+            f"⚠️ 这是中间页（第 {slide_index}/{total_slides} 页）。\n"
+            f"中间页元素因中心缩放（init.x = orig.x - w×0.25）会偏左。\n"
+            f"必须对所有元素强制右移：每个元素的 x 至少在 init.x 基础上增加 30-50px。\n"
+        )
+    else:
+        position_hint = (
+            f"这是{'首页' if is_first else '尾页'}（第 {slide_index}/{total_slides} 页），"
+            f"布局通常居中，保持 init 位置即可。\n"
+        )
+
     user_msg = (
         f"幻灯片尺寸 {SLIDE_W_PX}×{SLIDE_H_PX}，共 {len(elements)} 个元素。\n\n"
-        f"任务：检查是否有元素溢出边界或互相重叠。\n"
-        f"- 每个元素的 init 位置已经是正确的中心缩放默认值，不需要改动的元素不要放入 adjustments\n"
-        f"- 仅对溢出边界（x<0 或 x+w>{SLIDE_W_PX} 或 y<0 或 y+h>{SLIDE_H_PX}）或重叠的元素做调整\n"
-        f"- 调整方向：右移（增大 x）和下移（增大 y）优先，避免左移和上移\n"
-        f"- w 和 h 必须保持和 init 一致，不要改尺寸\n\n"
+        f"{position_hint}\n"
+        f"任务：\n"
+        f"1. 所有元素的 init 位置是中心缩放的起点，中间页元素必向右移 30-50px\n"
+        f"2. 同列元素 x 保持一致，同行元素 y 保持一致\n"
+        f"3. w 和 h 必须等于 init 中的值，严禁改动尺寸\n"
+        f"4. 只放入需要调整的元素，不需要改动的不要放\n\n"
         f"元素摘要：\n{elements_json}"
     )
 
