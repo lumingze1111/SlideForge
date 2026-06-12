@@ -1,0 +1,346 @@
+"""Layout Agent — 逐页分析幻灯片元素布局，智能调整 1.5× 缩放后的位置。
+
+LLM Agent（LangGraph ReAct 循环）：
+1. get_slide_elements() → 查看当前布局
+2. 自主分析分组 / 列 / 行结构
+3. 输出 adjustments → 调整方案
+4. check_layout() → 验证是否还有溢出/重叠
+5. 如有问题 → 回退重新调整
+
+输出：{record_id: {x, y, w, h}} 绝对坐标（CSS px）
+Assembly 阶段再转 EMU。
+"""
+
+import json
+import logging
+import time
+from typing import Any
+
+from langchain_core.tools import tool
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import create_react_agent
+
+logger = logging.getLogger(__name__)
+
+SIZE_SCALE = 1.5
+SLIDE_W_PX = 1920
+SLIDE_H_PX = 1080
+
+SYSTEM_PROMPT = """你是专业幻灯片布局设计师，负责在 1.5× 缩放后调整元素位置，避免溢出和重叠。
+
+工作流程：
+1. 调用 get_slide_elements() 查看当前页面所有元素及其布局信息
+2. 分析元素的分组、列、行关系
+3. 输出调整方案（绝对坐标 x/y/w/h，CSS px 单位）
+4. 如果后续需要查看结果可用 check_layout() 验证
+
+关键设计原则：
+- 保持原有视觉节奏（对齐、间距、分组关系）
+- 同类元素（同列/同行）保持对齐
+- 元素不应超出幻灯片边界 [0,1920] × [0,1080]
+- 全屏覆盖的 deco_snapshot 已在输入中跳过
+- 文字留 12% 余量（textbox 已比 rect 宽 12%）
+
+输出 JSON 格式（不要加代码块标记，直接输出）：
+{{
+  "adjustments": {{
+    "0": {{"x": 0, "y": 0, "w": 100, "h": 50}},
+    "1": {{"x": 200, "y": 0, "w": 400, "h": 100}}
+  }},
+  "reasoning": "左栏3个元素等距排列，右栏保持水平对齐..."
+}}
+
+注意：
+- adjustments 中不出现的元素保持原位置
+- 输出必须是合法 JSON，不要包含额外说明文字
+"""
+
+
+def _calc_init_rect(rx: float, ry: float, rw: float, rh: float) -> dict:
+    """计算中心缩放 1.5× 后的初始 rect（与 assemble.py _scaled_rect 逻辑一致）。"""
+    offset = (SIZE_SCALE - 1.0) / 2.0  # 0.25
+    return {
+        "x": round(rx - rw * offset, 1),
+        "y": round(ry - rh * offset, 1),
+        "w": round(rw * SIZE_SCALE, 1),
+        "h": round(rh * SIZE_SCALE, 1),
+    }
+
+
+def _truncate(text: str, max_len: int = 40) -> str:
+    """截断文本到 max_len + "…"。"""
+    if not text:
+        return ""
+    if len(text) <= max_len:
+        return text
+    return text[:max_len] + "…"
+
+
+def is_fullscreen_deco(rec: dict) -> bool:
+    """判断是否全屏 deco_snapshot（应跳过）。"""
+    if rec.get("kind") != "deco_snapshot":
+        return False
+    r = rec.get("rect", {})
+    return r.get("w", 0) >= SLIDE_W_PX * 0.99 and r.get("h", 0) >= SLIDE_H_PX * 0.99
+
+
+# ── Tools ─────────────────────────────────────────────────────────────────────
+
+# Module-level state for tools (set by run_layout_agent)
+_CURRENT_RECORDS: list[dict] = []
+_CURRENT_SLIDE_W: int = SLIDE_W_PX
+_CURRENT_SLIDE_H: int = SLIDE_H_PX
+
+
+@tool
+def get_slide_elements() -> str:
+    """查看当前幻灯片所有元素的结构化列表（id, kind, 位置rect, 文本等）。"""
+    elements = _build_element_list(_CURRENT_RECORDS, _CURRENT_SLIDE_W, _CURRENT_SLIDE_H)
+    if not elements:
+        return "当前幻灯片无可见元素。"
+    lines = [json.dumps(el, ensure_ascii=False) for el in elements]
+    return "[\n" + ",\n".join(lines) + "\n]"
+
+
+@tool
+def check_layout(adjustments_json: str) -> str:
+    """验证调整后的布局是否有溢出或重叠。接收 adjustments JSON 字符串。"""
+    try:
+        adjustments = json.loads(adjustments_json)
+    except json.JSONDecodeError as e:
+        return f"JSON 解析失败: {e}"
+    result = _check_layout_core(adjustments, _CURRENT_SLIDE_W, _CURRENT_SLIDE_H)
+    return json.dumps(result, ensure_ascii=False)
+
+
+def _build_element_list(records: list[dict], slide_w: int, slide_h: int) -> list[dict]:
+    """从 records 构建 LLM 可见的元素列表（跳过全屏 deco_snapshot）。"""
+    elements = []
+    for rec in records:
+        if is_fullscreen_deco(rec):
+            continue
+        r = rec.get("rect", {})
+        init_rect = _calc_init_rect(r.get("x", 0), r.get("y", 0),
+                                     r.get("w", 0), r.get("h", 0))
+        el = {
+            "id": str(rec.get("id", "")),
+            "kind": rec.get("kind", ""),
+            "tag": rec.get("tag", ""),
+        }
+        text = rec.get("text", "")
+        if text:
+            el["text"] = _truncate(text)
+        fs = rec.get("fontSize", 0)
+        if fs:
+            el["fontSize"] = fs
+        el["orig"] = {"x": r.get("x", 0), "y": r.get("y", 0),
+                       "w": r.get("w", 0), "h": r.get("h", 0)}
+        el["init"] = init_rect
+        elements.append(el)
+    return elements
+
+
+def _check_layout_core(adjustments: dict, slide_w: int, slide_h: int) -> dict:
+    """检查调整后的布局是否有溢出或重叠。
+
+    返回：
+    {
+        "overflow_count": int,
+        "overflow_elements": [str, ...],
+        "overlap_count": int,
+        "overlap_pairs": [[id1, id2], ...],
+        "score": int  # 100 - overflow*10 - overlap*5
+    }
+    """
+    overflow_count = 0
+    overflow_elements = []
+    overlap_count = 0
+    overlap_pairs = []
+    ids = sorted(adjustments.keys())
+
+    # 检查溢出
+    for eid in ids:
+        a = adjustments[eid]
+        issues = []
+        if a["x"] < 0:
+            issues.append(f"左边溢出({a['x']}px)")
+        if a["y"] < 0:
+            issues.append(f"上边溢出({a['y']}px)")
+        if a["x"] + a["w"] > slide_w:
+            issues.append(f"右边溢出({a['x'] + a['w'] - slide_w}px)")
+        if a["y"] + a["h"] > slide_h:
+            issues.append(f"下边溢出({a['y'] + a['h'] - slide_h}px)")
+        if issues:
+            overflow_count += 1
+            overflow_elements.append(f"元素{eid}: {'; '.join(issues)}")
+
+    # 检查重叠（AABB 相交检测）
+    boxes = {}
+    for eid in ids:
+        a = adjustments[eid]
+        boxes[eid] = (a["x"], a["y"], a["x"] + a["w"], a["y"] + a["h"])
+
+    for i in range(len(ids)):
+        for j in range(i + 1, len(ids)):
+            id1, id2 = ids[i], ids[j]
+            x1, y1, x1r, y1b = boxes[id1]
+            x2, y2, x2r, y2b = boxes[id2]
+            # AABB overlap
+            if x1 < x2r and x1r > x2 and y1 < y2b and y1b > y2:
+                overlap_count += 1
+                overlap_pairs.append([id1, id2])
+
+    score = max(0, 100 - overflow_count * 10 - overlap_count * 5)
+    return {
+        "overflow_count": overflow_count,
+        "overflow_elements": overflow_elements,
+        "overlap_count": overlap_count,
+        "overlap_pairs": overlap_pairs,
+        "score": score,
+    }
+
+
+def _parse_agent_response(content: str) -> dict | None:
+    """从 LLM 响应中提取 adjustments JSON。"""
+    if not content:
+        return None
+    text = content.strip()
+    # 去除可能的代码块标记
+    if "```" in text:
+        for chunk in text.split("```"):
+            chunk = chunk.strip()
+            if chunk.startswith("json"):
+                chunk = chunk[4:].strip()
+            if chunk.startswith("{"):
+                text = chunk
+                break
+    # 找第一个 { 和最后一个 }
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1:
+        return None
+    text = text[start:end + 1]
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    adjustments = data.get("adjustments")
+    if not adjustments or not isinstance(adjustments, dict):
+        return None
+    # 校验每个 adjustment
+    validated = {}
+    for eid, adj in adjustments.items():
+        if not isinstance(adj, dict):
+            continue
+        x, y, w, h = adj.get("x"), adj.get("y"), adj.get("w"), adj.get("h")
+        if None in (x, y, w, h):
+            continue
+        validated[eid] = {"x": float(x), "y": float(y),
+                          "w": float(w), "h": float(h)}
+    return validated if validated else None
+
+
+def create_layout_agent(llm: ChatOpenAI):
+    """创建 Layout ReAct Agent。"""
+    tools = [get_slide_elements, check_layout]
+    return create_react_agent(llm, tools, prompt=SYSTEM_PROMPT)
+
+
+def run_layout_agent(
+    llm: ChatOpenAI,
+    records: list[dict],
+    slide_index: int = 0,
+    timeout_ms: int = 30000,
+) -> dict[str, tuple[float, float, float, float]]:
+    """对一张 slide 运行 Layout Agent。
+
+    Args:
+        llm: ChatOpenAI 实例。
+        records: 当前 slide 的 records 列表（需要含 "id" 字段）。
+        slide_index: 幻灯片序号（仅用于日志）。
+        timeout_ms: 超时毫秒数。
+
+    Returns:
+        {record_id: (x, y, w, h)} 调整后的坐标。
+        返回空 dict 表示应 fallback 到 _scaled_rect。
+    """
+    global _CURRENT_RECORDS, _CURRENT_SLIDE_W, _CURRENT_SLIDE_H
+    _CURRENT_RECORDS = records
+    _CURRENT_SLIDE_W = SLIDE_W_PX
+    _CURRENT_SLIDE_H = SLIDE_H_PX
+
+    # 构造元素摘要（让 LLM 在第一步就看全貌）
+    elements = _build_element_list(records, SLIDE_W_PX, SLIDE_H_PX)
+    if not elements:
+        return {}
+
+    agent = create_layout_agent(llm)
+    elements_json = json.dumps(elements, ensure_ascii=False)
+
+    user_msg = (
+        f"当前页面 {SLIDE_W_PX}×{SLIDE_H_PX}，共 {len(elements)} 个可见元素。\n\n"
+        f"请先调用 get_slide_elements() 查看完整元素列表，然后输出调整方案。\n\n"
+        f"元素摘要：\n{elements_json}"
+    )
+
+    start_time = time.perf_counter()
+    best_adjustments: dict | None = None
+    best_score = -1
+    stagnant_rounds = 0
+    max_rounds = 3
+
+    for round_idx in range(max_rounds):
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        if elapsed_ms > timeout_ms:
+            logger.warning(f"[layout_agent] slide {slide_index} 超时 ({elapsed_ms:.0f}ms)，fallback")
+            return {}
+
+        try:
+            result = agent.invoke({"messages": [HumanMessage(content=user_msg)]})
+        except Exception as e:
+            logger.warning(f"[layout_agent] slide {slide_index} LLM 调用异常: {e}，fallback")
+            return {}
+
+        final_text = result["messages"][-1].content
+        parsed = _parse_agent_response(final_text)
+
+        if not parsed:
+            logger.warning(f"[layout_agent] slide {slide_index} 第{round_idx + 1}轮响应非法，fallback")
+            return {}
+
+        # 用 check_layout 验证当前方案
+        check = _check_layout_core(parsed, SLIDE_W_PX, SLIDE_H_PX)
+        score = check["score"]
+
+        if score > best_score:
+            best_adjustments = parsed
+            best_score = score
+            stagnant_rounds = 0
+        else:
+            stagnant_rounds += 1
+
+        if score >= 90:
+            # 足够好了
+            break
+
+        if stagnant_rounds >= 2:
+            # 连续 2 轮无提升 → fallback 到 _scaled_rect
+            logger.warning(f"[layout_agent] slide {slide_index} 无提升，fallback")
+            return {}
+
+        # 给 agent 反馈，继续迭代
+        user_msg = (
+            f"第{round_idx + 2}轮调整。当前方案检查结果：\n"
+            f"{json.dumps(check, ensure_ascii=False)}\n\n"
+            f"请根据以上反馈精调位置。"
+        )
+
+    if best_adjustments is None:
+        return {}
+
+    # 转换为 {id: (x, y, w, h)} tuple 格式
+    result = {}
+    for eid, adj in best_adjustments.items():
+        result[eid] = (adj["x"], adj["y"], adj["w"], adj["h"])
+    return result
