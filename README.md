@@ -161,7 +161,7 @@ python main.py
 ## 🛠️ 技术栈
 
 - **LLM** - DeepSeek Chat API（可替换为其他 OpenAI 兼容 API）
-- **UI Framework** - LangChain + Pydantic
+- **Agent框架** - LangChain + Pydantic
 - **PPT Generation** - python-pptx
 - **Web Preview** - HTML + CSS + JavaScript
 - **交互机制** - HTTP Server (多线程)
