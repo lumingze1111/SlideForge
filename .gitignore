@@ -43,3 +43,5 @@ Thumbs.db
 output/
 *.log
 /tmp/
+claude-skill-html-to-pptx/
+slideforge_outline_preview.html
