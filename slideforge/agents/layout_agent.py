@@ -37,22 +37,22 @@ SYSTEM_PROMPT = """你是专业幻灯片布局设计师，负责在 1.5× 缩放
 4. 调整方向偏好：优先右移（增大 x），其次下移（增大 y），避免左移或上移
 5. 调整幅度要保守：每次最多移动 20-30px，不要大幅跳跃
 6. 保持同列元素水平对齐（x 值一致），保持同行元素垂直对齐（y 值一致）
-7. 不要改动 w 和 h —— 尺寸保持 init 的值不变，只调整 x/y
+7. 不要改动 w 和 h —— 尺寸保持 orig 的值不变（CSS 原始尺寸），只调整 x/y
 8. 不要调整 deco_snapshot 和全屏背景元素
 9. 文字元素实际渲染尺寸比 init.rect 大 12%，调整时预留余量
 
 输出格式（不要加代码块标记）：
 {{
   "adjustments": {{
-    "0": {{"x": 100, "y": 50, "w": 600, "h": 90}},
-    "1": {{"x": 100, "y": 160, "w": 400, "h": 225}}
+    "0": {{"x": 100, "y": 50, "w": 400, "h": 60}},
+    "1": {{"x": 100, "y": 160, "w": 400, "h": 60}}
   }},
   "reasoning": "元素1右溢出20px，右移使其完全可见；元素2为保持同列对齐同步右移"
 }}
 
 注意：
 - adjustments 中只放需要调整的元素，不需要调整的不要放进去
-- 元素的 w 和 h 必须等于 init 中的 w 和 h，不要改动尺寸
+- 元素的 w 和 h 必须等于 orig 中的 w 和 h，不要改动尺寸
 - 输出必须是合法 JSON，不要加说明文字
 """
 
@@ -248,7 +248,7 @@ def create_layout_agent(llm: ChatOpenAI):
 
 
 def run_layout_agent(
-    llm: ChatOpenAI,
+    llm: ChatOpenAI | None,
     records: list[dict],
     slide_index: int = 0,
     total_slides: int = 1,
@@ -257,7 +257,7 @@ def run_layout_agent(
     """对一张 slide 运行 Layout Agent。
 
     Args:
-        llm: ChatOpenAI 实例。
+        llm: ChatOpenAI 实例（可选，仅首页/尾页需要）。
         records: 当前 slide 的 records 列表（需要含 "id" 字段）。
         slide_index: 幻灯片序号（1-based）。
         total_slides: 总幻灯片数。
@@ -272,106 +272,26 @@ def run_layout_agent(
     _CURRENT_SLIDE_W = SLIDE_W_PX
     _CURRENT_SLIDE_H = SLIDE_H_PX
 
-    # 构造元素摘要（让 LLM 在第一步就看全貌）
     elements = _build_element_list(records, SLIDE_W_PX, SLIDE_H_PX)
     if not elements:
         return {}
 
-    agent = create_layout_agent(llm)
-    elements_json = json.dumps(elements, ensure_ascii=False)
-
-    # 判断页面位置：中间页硬编码强制右移 200px，首页/尾页走 LLM
-    is_first = slide_index <= 1
-    is_last = slide_index >= total_slides
-    is_middle = not is_first and not is_last
-
-    if is_middle:
-        FORCE_RIGHT_SHIFT = 600
-        result = {}
-        for el in elements:
-            eid = el["id"]
-            init = el["init"]
-            x = init["x"] + FORCE_RIGHT_SHIFT
-            y = init["y"]
-            w = init["w"]
-            h = init["h"]
-            # clamp to slide
-            if x + w > SLIDE_W_PX:
-                x = SLIDE_W_PX - w
-            if x < 0:
-                x = 0
-            result[eid] = (x, y, w, h)
-        return result
-
-    if is_first or is_last:
-        user_msg = (
-            f"这是{'首页' if is_first else '尾页'}（第 {slide_index}/{total_slides} 页），"
-            f"布局通常居中。检查是否有溢出或重叠，保持 init 位置即可。\n\n"
-            f"元素摘要：\n{elements_json}"
-        )
-    else:
-        user_msg = (
-            f"幻灯片尺寸 {SLIDE_W_PX}×{SLIDE_H_PX}，共 {len(elements)} 个元素。\n\n"
-            f"元素摘要：\n{elements_json}"
-        )
-
-    start_time = time.perf_counter()
-    best_adjustments: dict | None = None
-    best_score = -1
-    stagnant_rounds = 0
-    max_rounds = 3
-
-    for round_idx in range(max_rounds):
-        elapsed_ms = (time.perf_counter() - start_time) * 1000
-        if elapsed_ms > timeout_ms:
-            logger.warning(f"[layout_agent] slide {slide_index} 超时 ({elapsed_ms:.0f}ms)，fallback")
-            return {}
-
-        try:
-            result = agent.invoke({"messages": [HumanMessage(content=user_msg)]})
-        except Exception as e:
-            logger.warning(f"[layout_agent] slide {slide_index} LLM 调用异常: {e}，fallback")
-            return {}
-
-        final_text = result["messages"][-1].content
-        parsed = _parse_agent_response(final_text)
-
-        if not parsed:
-            logger.warning(f"[layout_agent] slide {slide_index} 第{round_idx + 1}轮响应非法，fallback")
-            return {}
-
-        # 用 check_layout 验证当前方案
-        check = _check_layout_core(parsed, SLIDE_W_PX, SLIDE_H_PX)
-        score = check["score"]
-
-        if score > best_score:
-            best_adjustments = parsed
-            best_score = score
-            stagnant_rounds = 0
-        else:
-            stagnant_rounds += 1
-
-        if score >= 90:
-            # 足够好了
-            break
-
-        if stagnant_rounds >= 2:
-            # 连续 2 轮无提升 → fallback 到 _scaled_rect
-            logger.warning(f"[layout_agent] slide {slide_index} 无提升，fallback")
-            return {}
-
-        # 给 agent 反馈，继续迭代
-        user_msg = (
-            f"第{round_idx + 2}轮调整。当前方案检查结果：\n"
-            f"{json.dumps(check, ensure_ascii=False)}\n\n"
-            f"请根据以上反馈精调位置。"
-        )
-
-    if best_adjustments is None:
-        return {}
-
-    # 转换为 {id: (x, y, w, h)} tuple 格式
+    # 所有页面统一右移 150px（补偿 1.5× 中心缩放的左侧偏移）
+    FORCE_RIGHT_SHIFT = 150
     result = {}
-    for eid, adj in best_adjustments.items():
-        result[eid] = (adj["x"], adj["y"], adj["w"], adj["h"])
+    logger.info(f"[layout_agent] slide {slide_index}/{total_slides} → +{FORCE_RIGHT_SHIFT}px, {len(elements)} elements")
+    for el in elements:
+        eid = el["id"]
+        init = el["init"]
+        orig = el["orig"]
+        x = init["x"] + FORCE_RIGHT_SHIFT
+        y = init["y"]
+        w = orig["w"]
+        h = orig["h"]
+        # clamp to slide (use init.w for clamping since position is in init space)
+        if x + init["w"] > SLIDE_W_PX:
+            x = SLIDE_W_PX - init["w"]
+        if x < 0:
+            x = 0
+        result[eid] = (x, y, w, h)
     return result

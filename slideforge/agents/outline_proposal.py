@@ -311,6 +311,7 @@ function confirmOutline() {{
 </html>"""
     
     output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(html, encoding="utf-8")
     return str(output_path.absolute())
 
@@ -323,7 +324,7 @@ def pick_outline_proposal(proposals: OutlineProposals, topic: str) -> OutlinePro
     preview_path = render_outline_preview_html(
         proposals.proposals,
         topic,
-        output_path="slideforge_outline_preview.html",
+        output_path="output/slideforge_outline_preview.html",
         server_port=7789
     )
     print(f"\n  💡 大纲预览页面已生成：{preview_path}")

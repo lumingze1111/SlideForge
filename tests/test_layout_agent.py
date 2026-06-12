@@ -129,135 +129,57 @@ class TestParseAgentResponse:
 
 
 class TestRunLayoutAgent:
-    def test_agent_returns_adjustments(self):
-        """run_layout_agent should return a dict mapping id -> (x,y,w,h)."""
-        mock_llm = MagicMock()
-        mock_agent = MagicMock()
-
-        mock_result = {
-            "messages": [
-                HumanMessage(content=""),
-                MagicMock(content=json.dumps({
-                    "adjustments": {
-                        "0": {"x": 0, "y": 0, "w": 100, "h": 50},
-                        "1": {"x": 150, "y": 0, "w": 200, "h": 100},
-                    },
-                    "reasoning": "Left justified, no overlap."
-                })),
-            ]
-        }
-        mock_agent.invoke.return_value = mock_result
-
+    def test_applies_150px_shift_to_all_elements(self):
+        """All elements get init.x + 150px, with orig w/h (not init w/h)."""
         records = [
-            {"id": "0", "kind": "text", "rect": {"x": 0, "y": 0, "w": 100, "h": 50},
+            {"id": "0", "kind": "text", "rect": {"x": 100, "y": 100, "w": 400, "h": 50},
              "text": "Hello", "tag": "h1", "fontSize": 24},
-            {"id": "1", "kind": "shape", "rect": {"x": 100, "y": 0, "w": 200, "h": 100},
+            {"id": "1", "kind": "shape", "rect": {"x": 200, "y": 300, "w": 300, "h": 200},
              "tag": "div"},
         ]
+        result = run_layout_agent(None, records, slide_index=2, total_slides=3)
+        assert "0" in result
+        assert "1" in result
+        # init.x = 100 - 400*0.25 = 0, +150 = 150
+        # w/h = orig values (not init)
+        assert result["0"] == (150.0, 87.5, 400, 50)
+        # init.x = 200 - 300*0.25 = 125, +150 = 275
+        assert result["1"] == (275.0, 250.0, 300, 200)
 
-        with patch("slideforge.agents.layout_agent.create_react_agent", return_value=mock_agent):
-            result = run_layout_agent(mock_llm, records, slide_index=1)
-            assert "0" in result
-            assert "1" in result
-            assert result["0"] == (0, 0, 100, 50)
-
-    def test_empty_result_fallback(self):
-        """Empty adjustments dict should trigger fallback (return empty)."""
-        mock_llm = MagicMock()
-        mock_agent = MagicMock()
-
-        mock_result = {
-            "messages": [MagicMock(content="{}")],
-        }
-        mock_agent.invoke.return_value = mock_result
-
-        records = [{"id": "0", "kind": "text", "rect": {"x": 0, "y": 0, "w": 100, "h": 50},
-                     "text": "Hi", "tag": "p", "fontSize": 16}]
-
-        with patch("slideforge.agents.layout_agent.create_react_agent", return_value=mock_agent):
-            result = run_layout_agent(mock_llm, records, slide_index=1)
-            assert result == {}
-
-    def test_exception_fallback(self):
-        """LLM exception should return empty dict (fallback)."""
-        mock_llm = MagicMock()
-        mock_agent = MagicMock()
-        mock_agent.invoke.side_effect = Exception("API error")
-
-        records = [{"id": "0", "kind": "text", "rect": {"x": 0, "y": 0, "w": 100, "h": 50},
-                     "text": "Hi", "tag": "p", "fontSize": 16}]
-
-        with patch("slideforge.agents.layout_agent.create_react_agent", return_value=mock_agent):
-            result = run_layout_agent(mock_llm, records, slide_index=1)
-            assert result == {}
-
-    def test_no_improvement_fallback(self):
-        """Two rounds with no score improvement should trigger fallback.
-
-        Use 2 overflowing elements (score 80, below the 90 threshold)
-        so the loop continues past the 'good enough' check.
-        """
-        mock_llm = MagicMock()
-        mock_agent = MagicMock()
-
-        # 2 elements overflowing → overflow_count=2 → score=100-20=80
-        stagnant_resp = {
-            "adjustments": {
-                "0": {"x": -100, "y": 0, "w": 50, "h": 50},
-                "1": {"x": 1900, "y": 0, "w": 100, "h": 50},
-            },
-        }
-        call_results = [
-            {"messages": [MagicMock(content=json.dumps(stagnant_resp))]},
-            {"messages": [MagicMock(content=json.dumps(stagnant_resp))]},
-            {"messages": [MagicMock(content=json.dumps(stagnant_resp))]},
+    def test_first_page_also_gets_shift(self):
+        """First page (slide_index=1) also gets the 150px shift."""
+        records = [
+            {"id": "0", "kind": "text", "rect": {"x": 100, "y": 100, "w": 400, "h": 50},
+             "text": "Hello", "tag": "h1", "fontSize": 24},
         ]
-        call_idx = [0]
+        result = run_layout_agent(None, records, slide_index=1, total_slides=3)
+        assert result["0"][0] == 150.0  # init.x=0, +150
 
-        def side_effect(x):
-            i = call_idx[0]
-            call_idx[0] += 1
-            return call_results[i]
+    def test_last_page_also_gets_shift(self):
+        """Last page also gets the 150px shift."""
+        records = [
+            {"id": "0", "kind": "text", "rect": {"x": 100, "y": 100, "w": 400, "h": 50},
+             "text": "Bye", "tag": "h1", "fontSize": 24},
+        ]
+        result = run_layout_agent(None, records, slide_index=3, total_slides=3)
+        assert result["0"][0] == 150.0
 
-        mock_agent.invoke.side_effect = side_effect
+    def test_clamps_to_slide_right_edge(self):
+        """Element that would overflow right edge gets clamped."""
+        records = [
+            {"id": "0", "kind": "text", "rect": {"x": 1800, "y": 100, "w": 400, "h": 50},
+             "text": "Right", "tag": "p", "fontSize": 16},
+        ]
+        result = run_layout_agent(None, records, slide_index=2, total_slides=3)
+        x, y, w, h = result["0"]
+        # init.x = 1800 - 400*0.25 = 1700, +150 = 1850
+        # init.w = 400*1.5 = 600, 1850 + 600 = 2450 > 1920 → clamp to 1920-600=1320
+        assert x == 1320.0
 
-        records = [{"id": "0", "kind": "text", "rect": {"x": 0, "y": 0, "w": 100, "h": 50},
-                     "text": "Hi", "tag": "p", "fontSize": 16},
-                   {"id": "1", "kind": "text", "rect": {"x": 100, "y": 0, "w": 100, "h": 50},
-                     "text": "Bye", "tag": "p", "fontSize": 16}]
-
-        with patch("slideforge.agents.layout_agent.create_react_agent", return_value=mock_agent):
-            result = run_layout_agent(mock_llm, records, slide_index=1)
-            assert result == {}
-
-    def test_timeout_fallback(self):
-        """Response exceeding time limit should return empty."""
-        import time
-        mock_llm = MagicMock()
-        mock_agent = MagicMock()
-
-        real_sleep = time.sleep
-        call_count = [0]
-
-        def delayed_invoke(x):
-            call_count[0] += 1
-            real_sleep(0.05)  # 50ms per call
-            # Score 80 (below 90) so the loop continues
-            return {"messages": [MagicMock(content=json.dumps({
-                "adjustments": {
-                    "0": {"x": -100, "y": 0, "w": 50, "h": 50},
-                    "1": {"x": 1900, "y": 0, "w": 100, "h": 50},
-                },
-            }))]}
-
-        mock_agent.invoke.side_effect = delayed_invoke
-
-        records = [{"id": "0", "kind": "text", "rect": {"x": 0, "y": 0, "w": 100, "h": 50},
-                     "text": "Hi", "tag": "p", "fontSize": 16},
-                   {"id": "1", "kind": "text", "rect": {"x": 100, "y": 0, "w": 100, "h": 50},
-                     "text": "Bye", "tag": "p", "fontSize": 16}]
-
-        with patch("slideforge.agents.layout_agent.create_react_agent", return_value=mock_agent):
-            result = run_layout_agent(mock_llm, records, slide_index=1, timeout_ms=60)
-            # With 60ms timeout and 50ms per call, the second round should time out
-            assert result == {}
+    def test_empty_elements_returns_empty(self):
+        """Empty elements list (e.g. only fullscreen deco) returns empty dict."""
+        records = [
+            {"id": "0", "kind": "deco_snapshot", "rect": {"x": 0, "y": 0, "w": 1920, "h": 1080}},
+        ]
+        result = run_layout_agent(None, records, slide_index=2, total_slides=3)
+        assert result == {}

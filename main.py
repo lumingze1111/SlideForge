@@ -14,7 +14,7 @@ from slideforge.agents.topic_analyzer import analyze_topic, print_suggestion
 from slideforge.agents.propose_agent import run_propose_agent, pick_proposal
 from slideforge.agents.outline_proposal import generate_outline_proposals, pick_outline_proposal
 from slideforge.agents.html_generator import generate_outline, generate_slides_html
-from slideforge.pptx_exporter import export_pptx
+from slideforge.pptx_converter import convert_html_to_pptx
 
 
 def main() -> None:
@@ -74,25 +74,27 @@ def main() -> None:
         llm,
         topic=topic,
         audience=suggestion.target_audience,
-        pages=chosen_outline.slide_count
+        pages=chosen_outline.slide_count,
+        key_messages=suggestion.key_messages,  # 传递关键信息用于研究
+        research_facts=None  # 自动搜索
     )
     print(f"  ✓ 内容生成完成，共 {len(outline.slides)} 页")
 
     # ── 步骤 4：渲染 HTML 预览 ──────────────────────────────────────────
-    slides_html_path = generate_slides_html(
-        outline,
-        chosen_color.colors,
-        output_path=f"/tmp/slideforge_{topic[:10]}.html",
-    )
-    print(f"  ✓ HTML 幻灯片：{slides_html_path}")
-
     import subprocess
+    from pathlib import Path
+    output_dir = Path(__file__).parent / "output"
+    output_dir.mkdir(exist_ok=True)
+
+    slides_html_path = str(output_dir / f"slides_{topic[:10]}.html")
+    generate_slides_html(outline, chosen_color.colors, output_path=slides_html_path)
+    print(f"  ✓ HTML 幻灯片：{slides_html_path}")
     subprocess.run(["open", slides_html_path], check=False)
 
     # ── 步骤 5：导出 PPTX ────────────────────────────────────────────────
-    output_pptx = f"/tmp/slideforge_{topic[:20].replace(' ', '_')}.pptx"
+    output_pptx = str(output_dir / f"slides_{topic[:20].replace(' ', '_')}.pptx")
     print(f"\n  📊 正在导出 PPTX...")
-    export_pptx(outline, chosen_color.colors, output_path=output_pptx)
+    convert_html_to_pptx(slides_html_path, output_pptx, verbose=True)
     print(f"  ✓ PPTX 已生成：{output_pptx}")
     subprocess.run(["open", output_pptx], check=False)
 

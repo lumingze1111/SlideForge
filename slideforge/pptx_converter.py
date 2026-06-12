@@ -210,15 +210,17 @@ def _run_format_validation(
         if is_clean(report):
             if verbose:
                 print(f"[converter] ✓ 格式校验通过：{t['matched']}/{t['records']} "
-                      f"records, {t['style_issues']} 样式问题, {t['spurious']} 多余形状")
+                      f"records, {t['style_issues']} 样式, {t.get('pos_issues', 0)} 位置, "
+                      f"{t['spurious']} 多余")
             return
 
         if verbose:
             issue_lines = [
                 f"slide {s['index']}: {len(s['unmatched'])} 缺失, "
-                f"{len(s['style_issues'])} 样式, {len(s['spurious'])} 多余"
+                f"{len(s['style_issues'])} 样式, {len(s.get('pos_issues', []))} 位置, "
+                f"{len(s['spurious'])} 多余"
                 for s in report['slides']
-                if s['unmatched'] or s['style_issues'] or s['spurious']
+                if s['unmatched'] or s['style_issues'] or s.get('pos_issues') or s['spurious']
             ]
             print(f"[converter] 第 {attempt}/{max_attempts} 轮校验问题：")
             for line in issue_lines[:5]:
@@ -246,4 +248,5 @@ def _run_format_validation(
             print(f"[converter] ✓ 格式校验通过：{t['matched']}/{t['records']}")
         else:
             print(f"[converter] ⚠ 格式校验残留：{t['unmatched']} 缺失, "
-                  f"{t['style_issues']} 样式问题, {t['spurious']} 多余形状")
+                  f"{t['style_issues']} 样式, {t.get('pos_issues', 0)} 位置, "
+                  f"{t['spurious']} 多余")

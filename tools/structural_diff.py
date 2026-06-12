@@ -23,6 +23,9 @@ NSA = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 PX_TO_EMU = 6350
 EMU_TO_PX = 1.0 / PX_TO_EMU
+SIZE_SCALE = 1.5
+EMU_SIZE_TO_PX = 1.0 / (PX_TO_EMU * SIZE_SCALE)
+CENTER_OFFSET = (SIZE_SCALE - 1.0) / 2.0  # 0.25
 
 
 def load_pptx_shapes(pptx_path: Path) -> list[list[dict]]:
@@ -62,8 +65,10 @@ def _shape_summary(sp, tag) -> dict:
             info['x'] = int(off.get('x', '0')) * EMU_TO_PX
             info['y'] = int(off.get('y', '0')) * EMU_TO_PX
         if ext is not None:
-            info['w'] = int(ext.get('cx', '0')) * EMU_TO_PX
-            info['h'] = int(ext.get('cy', '0')) * EMU_TO_PX
+            info['w'] = int(ext.get('cx', '0')) * EMU_SIZE_TO_PX
+            info['h'] = int(ext.get('cy', '0')) * EMU_SIZE_TO_PX
+        info['x'] += info['w'] * CENTER_OFFSET
+        info['y'] += info['h'] * CENTER_OFFSET
     prst = spPr.find(f'{{{NSA}}}prstGeom')
     if prst is not None:
         info['shape'] = prst.get('prst')

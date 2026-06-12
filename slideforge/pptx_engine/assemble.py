@@ -1402,21 +1402,23 @@ def assemble_slide(slide, data, slide_index: int = 0, total_slides: int = 1):
     # ── Layout Agent 调优 ───────────────────────────────────────────
     try:
         from slideforge.agents.layout_agent import run_layout_agent
-        from langchain_openai import ChatOpenAI
 
-        llm = ChatOpenAI(model="gpt-4o", temperature=0)
-        adjustments = run_layout_agent(llm, data["records"],
+        adjustments = run_layout_agent(None, data["records"],
                                        slide_index=slide_index,
                                        total_slides=total_slides)
+        if adjustments:
+            print(f"[assemble] slide {slide_index}: {len(adjustments)} adjustments from layout agent")
         for rec in data["records"]:
             eid = str(rec.get("id", ""))
             if eid in adjustments:
                 x, y, w, h = adjustments[eid]
                 rec["_adjusted_rect"] = (x, y, w, h)
     except ImportError:
-        pass  # Layout Agent 模块未安装，使用 _scaled_rect
-    except Exception:
-        pass  # 任何异常 fallback 到 _scaled_rect
+        pass  # Layout Agent 模块未安装
+    except Exception as e:
+        import traceback
+        print(f"[layout_agent] ERROR: {e}")
+        traceback.print_exc()
 
     text_records = []
     for rec in data["records"]:

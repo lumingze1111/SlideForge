@@ -113,13 +113,137 @@ SlideForge/
 ├── main.py                          # 主入口
 ├── slideforge/
 │   ├── agents/
-│   │   ├── propose_agent.py        # 配色方案生成
-│   │   ├── outline_proposal.py     # 大纲方案生成
-│   │   └── html_generator.py       # 内容生成与渲染
-│   ├── preview_generator.py        # 浏览器预览生成
-│   └── pptx_exporter.py            # PPTX 导出
+│   │   ├── propose_agent.py         # 配色方案生成
+│   │   ├── outline_proposal.py      # 大纲方案生成
+│   │   ├── html_generator.py        # 内容生成与渲染
+│   │   ├── topic_analyzer.py        # 主题分析
+│   │   ├── style_agent.py           # 样式生成
+│   │   ├── design_agent.py          # 设计 Agent
+│   │   ├── research_agent.py        # 研究 Agent
+│   │   ├── fact_checker.py          # 事实核查
+│   │   ├── review_agent.py          # 审校 Agent
+│   │   └── speaker_notes.py         # 演讲者备注
+│   ├── pptx_engine/
+│   │   ├── measure.py               # Playwright 测量（HTML → JSON 结构）
+│   │   ├── assemble.py              # OOXML 装配（JSON → PPTX）
+│   │   ├── embed_fonts.py           # 字体嵌入与映射
+│   │   ├── font_paths.py            # 字体路径解析
+│   │   ├── text_utils.py            # 文本工具（CJK 检测等）
+│   │   ├── adapters.py              # 中间格式适配
+│   │   └── _js_snippets.py          # 浏览器端 JS 测量片段
+│   ├── design_system/
+│   │   ├── colors.py                # 配色系统
+│   │   └── typography.py            # 字体排版
+│   ├── pptx_converter.py            # HTML → PPTX 转换入口
+│   ├── pptx_exporter.py             # PPTX 导出器
+│   ├── preview_generator.py         # 浏览器预览生成
+│   └── interactive.py               # 交互式选择
+├── tools/
+│   ├── validate_gradients.py        # 渐变校验与修补
+│   ├── validate_format.py           # 格式校验（元素、样式、字体）
+│   └── structural_diff.py           # 结构性元素对比
 └── README.md
 ```
+
+## 🔧 HTML → PPTX 转换方案
+
+### 整体流水线
+
+```
+HTML 幻灯片 → [Playwright 测量] → JSON 结构 → [OOXML 装配] → PPTX
+                  ↑ measure.py                    ↑ assemble.py
+                                     
+[渐变校验] ← validate_gradients.py → 修补 slide XML
+[格式校验] ← validate_format.py   → 修补 run 样式
+[结构对比] ← structural_diff.py   → 报告缺失/多余元素
+```
+
+### 坐标系与缩放方案
+
+测量视口固定 1920×1080 CSS px。PPTX 标准 16:9 幻灯片 = 13.333" × 7.5" = 12,192,000 × 6,858,000 EMU。
+
+**核心思路**：元素以视觉中心为基准放大 1.5×，避免向右下偏移。
+
+```
+测量 rect (rx, ry, rw, rh)
+         │
+         ▼ _scaled_rect()
+x_emu = (rx - rw × 0.25) × 6350    ← 位置上移/左移，补偿尺寸放大
+y_emu = (ry - rh × 0.25) × 6350
+w_emu = rw × 6350 × 1.5            ← 尺寸放大 1.5×
+h_emu = rh × 6350 × 1.5
+         │
+         ▼
+视觉中心 = 原测量中心（不变），元素向四周均匀放大
+```
+
+三种缩放比：
+
+| 对象 | 公式 | 值 | 说明 |
+|------|------|-----|------|
+| **位置** (x, y) | `(px - px_w × 0.25) × 6350` | 向左上偏移 | 补偿尺寸放大，保持中心不变 |
+| **尺寸** (w, h) | `px × 6350 × 1.5` | 1.5× | 元素宽高、边距、线宽 |
+| **字号** (font-size) | `px × 0.75` pt | 1.5× | CSS px → OOXML pt |
+
+关键常量及函数 (`assemble.py:26-30`)：
+
+```python
+PX_TO_EMU   = 6350      # 1 CSS px = 6350 EMU
+PX_TO_PT    = 0.75      # 1 CSS px = 0.75 pt (0.5 × 1.5)
+SIZE_SCALE  = 1.5       # 尺寸缩放倍率
+CENTER_OFF  = (SIZE_SCALE - 1) / 2  # 0.25, 中心偏移量
+
+def _scaled_rect(rx, ry, rw, rh):
+    x = px_to_emu(rx - rw * CENTER_OFF)
+    y = px_to_emu(ry - rh * CENTER_OFF)
+    w = px_to_emu(rw, SIZE_SCALE)
+    h = px_to_emu(rh, SIZE_SCALE)
+    return x, y, w, h
+```
+
+校验工具通过 `info['x'] += info['w'] × 0.25` 反向还原位置后再与测量记录比对。
+
+元素位置通过 `_clamp_to_slide()` 强制约束在幻灯片边界内，优先移动位置保留完整尺寸，仅当元素宽/高超出幻灯片时才裁剪。
+
+### 位置比例校验
+
+`verify_position()` 对比 HTML 与 PPTX 中每个元素的：
+
+- **比例中心** — `(center_x / slide_w, center_y / slide_h)` 偏差 ≤ 2%
+- **比例尺寸** — `(w / slide_w, h / slide_h)` 偏差 ≤ 2%
+- **边界溢出** — 检测元素是否超出幻灯片范围
+
+校验结果纳入 `is_clean()` 判定，位置不达标会触发完整的格式校验循环。
+
+### 文本框处理
+
+文本框尺寸 = 浏览器 BCR (border-box) × 1.12，然后按 `SIZE_SCALE` 转为 EMU。
+
+```
+textbox_w_emu = BCR_w_px × 1.12 × PX_TO_EMU × SIZE_SCALE
+textbox_h_emu = BCR_h_px × 1.12 × PX_TO_EMU × SIZE_SCALE
+font_pt       = font_px × 0.75
+```
+
+1.12 倍余量补偿 PPT 与浏览器之间的字体度量差异（同字号下 PPT 渲染宽度略宽），远小于旧版 1.3×–1.4× 的垂直膨胀，不会导致段落间叠压。
+
+CSS `padding` 转为 OOXML 文本框内部边距，同样按 `SIZE_SCALE` 缩放。CSS `line-height` 通过 `lnSpc`（`spcPts`）精确写入，保证多行文本行距与浏览器一致。
+
+### 渐变背景
+
+CSS `linear-gradient` 解析为 OOXML `gradFill`：
+
+- 色标位置：CSS % × 10 → 内部 0..1000，写入 OOXML 时 ×100 → 0..100000
+- 角度：保持原值
+- 校验循环：提取 PPTX 渐变 → 与 HTML 逐个色标比对 → 不一致则直接修补 slide XML
+
+### 校验循环
+
+`pptx_converter.py` 在生成 PPTX 后自动执行：
+
+1. **渐变校验** — 逐页对比 HTML 背景渐变与 PPTX `gradFill`，修补不一致的页
+2. **格式校验** — 对比每个 measurement record 与 PPTX 形状的位置、字号、颜色、粗斜体、对齐方式，修补不一致的 run
+3. **循环终止** — 全部匹配或超过最大尝试次数（默认 3 轮）
 
 ## ⚙️ 配置
 
@@ -148,6 +272,14 @@ pages = 8  # 幻灯片页数
 - 设计多套配色方案供团队选择
 - 探索不同的演示结构
 - 学习演示文稿设计最佳实践
+
+## 📝 待优化
+
+- **HTML 与 PPTX 格式对齐** — 进一步缩小浏览器渲染与 OOXML 输出之间的位置、字号、行距差异，减少校验循环的修正次数
+- **TTS 语音合成** — 将演讲者备注自动合成为语音旁白，支持导出带配音的演示文稿或视频
+- **主题相关图片** — 通过网络搜索或 AIGC（Stable Diffusion / DALL·E）自动匹配与幻灯片内容相关的配图
+- **Agent 流程自进化** — Agent 根据校验反馈自动调整生成策略，持续优化输出质量，减少人工干预
+- **用户可编辑 PPTX** — 生成后支持对 PPTX 的微调编辑（文字修改、图片替换、布局调整），无需回到源 HTML 重新生成
 
 ## 🤝 贡献
 

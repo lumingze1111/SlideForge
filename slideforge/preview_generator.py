@@ -107,7 +107,7 @@ def generate_preview_html(
         HTML 文件绝对路径
     """
     if output_path is None:
-        output_path = "slideforge_preview.html"
+        output_path = "output/slideforge_preview.html"
 
     html_parts = [_html_header(server_port)]
 
@@ -118,6 +118,7 @@ def generate_preview_html(
     html_parts.append(_html_footer(len(proposals), server_port))
 
     output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("\n".join(html_parts), encoding="utf-8")
     return str(output_path.absolute())
 
@@ -289,7 +290,7 @@ h1 {{
 def _generate_slide_preview(proposal, topic: str, index: int) -> str:
     colors = proposal.colors
 
-    bg = colors.get("background", colors.get("gradient_bg", "#FFFFFF"))
+    bg = colors.get("gradient_bg", colors.get("background", "#FFFFFF"))
     primary = colors.get("primary", "#1976D2")
     accent = colors.get("accent", colors.get("accent_1", "#FFC107"))
     text_primary = colors.get("text_primary", "#212121")

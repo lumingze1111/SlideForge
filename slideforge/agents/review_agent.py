@@ -11,7 +11,7 @@ ReAct 工具集：
 
 import json
 import re
-from typing import List, Dict
+from typing import List, Dict, Optional
 from bs4 import BeautifulSoup
 
 from langchain_core.tools import tool
@@ -62,7 +62,8 @@ def _hex_contrast(fg: str, bg: str) -> float:
     return (max(l1, l2) + 0.05) / (min(l1, l2) + 0.05)
 
 
-def _parse_px(value: str) -> int | None:
+def _parse_px(value: str) -> Optional[int]:
+
     """从 CSS 值字符串中提取 px 数值"""
     m = re.match(r"(\d+(?:\.\d+)?)px", value.strip())
     return int(float(m.group(1))) if m else None

@@ -32,7 +32,10 @@ NSA = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 PX_TO_EMU = 6350
 EMU_TO_PX = 1.0 / PX_TO_EMU
-PX_TO_PT = 0.5
+PX_TO_PT = 0.75
+SIZE_SCALE = 1.5
+EMU_SIZE_TO_PX = 1.0 / (PX_TO_EMU * SIZE_SCALE)
+CENTER_OFFSET = (SIZE_SCALE - 1.0) / 2.0  # 0.25 — 中心缩放时位置的左/上偏移
 
 POS_TOL = 8.0          # px
 TEXT_PREFIX = 24       # chars compared for text matching
@@ -124,8 +127,11 @@ def _shape_summary(sp, tag) -> dict:
                 info['x'] = int(off.get('x', '0')) * EMU_TO_PX
                 info['y'] = int(off.get('y', '0')) * EMU_TO_PX
             if ext is not None:
-                info['w'] = int(ext.get('cx', '0')) * EMU_TO_PX
-                info['h'] = int(ext.get('cy', '0')) * EMU_TO_PX
+                info['w'] = int(ext.get('cx', '0')) * EMU_SIZE_TO_PX
+                info['h'] = int(ext.get('cy', '0')) * EMU_SIZE_TO_PX
+        # 反转中心缩放偏移，使位置与测量记录的 (rx, ry) 可比
+        info['x'] += info['w'] * CENTER_OFFSET
+        info['y'] += info['h'] * CENTER_OFFSET
         prst = spPr.find(f'{{{NSA}}}prstGeom')
         if prst is not None:
             info['shape'] = prst.get('prst')
@@ -348,6 +354,73 @@ def verify_shape_fill(rec: dict, shape: dict) -> list[str]:
     return issues
 
 
+# ── Position verification ──────────────────────────────────────────────────────
+
+SLIDE_W_PX = 1920.0
+SLIDE_H_PX = 1080.0
+POS_PROP_TOL = 0.02   # 比例位置偏差容忍度（2%）
+
+
+def verify_position(rec: dict, shape: dict, slide_w: float = SLIDE_W_PX,
+                    slide_h: float = SLIDE_H_PX) -> list[str]:
+    """校验元素在 HTML 与 PPTX 中的比例位置是否一致。
+
+    比较元素中心的相对位置（center_x / slide_w）和尺寸比例。
+    返回 issue 列表。
+    """
+    issues = []
+    rect = rec.get('rect') or {}
+    rx, ry = rect.get('x', 0), rect.get('y', 0)
+    rw, rh = rect.get('w', 0), rect.get('h', 0)
+    sx, sy = shape['x'], shape['y']
+    sw, sh = shape['w'], shape['h']
+
+    if rw <= 0 or rh <= 0 or sw <= 0 or sh <= 0:
+        return issues
+
+    # 比例中心
+    h_center_x = (rx + rw / 2.0) / slide_w
+    h_center_y = (ry + rh / 2.0) / slide_h
+    p_center_x = (sx + sw / 2.0) / slide_w
+    p_center_y = (sy + sh / 2.0) / slide_h
+
+    dx_prop = abs(p_center_x - h_center_x)
+    dy_prop = abs(p_center_y - h_center_y)
+
+    if dx_prop > POS_PROP_TOL:
+        issues.append(
+            f'pos center_x: html={h_center_x:.3f} pptx={p_center_x:.3f} '
+            f'(Δ={dx_prop:.3f}, html=({rx:.0f},{ry:.0f},{rw:.0f},{rh:.0f}) '
+            f'pptx=({sx:.0f},{sy:.0f},{sw:.0f},{sh:.0f}))')
+    if dy_prop > POS_PROP_TOL:
+        issues.append(
+            f'pos center_y: html={h_center_y:.3f} pptx={p_center_y:.3f} '
+            f'(Δ={dy_prop:.3f})')
+
+    # 尺寸比例
+    h_w_ratio = rw / slide_w
+    h_h_ratio = rh / slide_h
+    p_w_ratio = sw / slide_w
+    p_h_ratio = sh / slide_h
+    dw = abs(p_w_ratio - h_w_ratio)
+    dh = abs(p_h_ratio - h_h_ratio)
+    if dw > POS_PROP_TOL:
+        issues.append(f'pos w_ratio: html={h_w_ratio:.3f} pptx={p_w_ratio:.3f} (Δ={dw:.3f})')
+    if dh > POS_PROP_TOL:
+        issues.append(f'pos h_ratio: html={h_h_ratio:.3f} pptx={p_h_ratio:.3f} (Δ={dh:.3f})')
+
+    # 溢出检测
+    p_right = sx + sw
+    p_bottom = sy + sh
+    if sx < -1 or sy < -1:
+        issues.append(f'pos overflow: shape starts outside slide (x={sx:.0f}, y={sy:.0f})')
+    if p_right > slide_w + 1 or p_bottom > slide_h + 1:
+        issues.append(
+            f'pos overflow: shape exceeds slide (right={p_right:.0f}, bottom={p_bottom:.0f})')
+
+    return issues
+
+
 # ── Main diff ─────────────────────────────────────────────────────────────────
 
 def diff_decks(measurement: dict, pptx_path: Path) -> dict:
@@ -368,10 +441,16 @@ def diff_decks(measurement: dict, pptx_path: Path) -> dict:
         match = match_records_to_shapes(records, shapes)
 
         slide_issues = []
+        pos_issues = []
         for ri, si in match['pairs']:
             rec = records[ri]
             shape = shapes[si]
             kind = rec.get('kind', '')
+            # 位置比例校验（所有类型）
+            pos_issues.extend([
+                (ri, 'pos', issue)
+                for issue in verify_position(rec, shape)
+            ])
             if kind == 'text':
                 slide_issues.extend([
                     (ri, 'text-run', issue)
@@ -395,12 +474,14 @@ def diff_decks(measurement: dict, pptx_path: Path) -> dict:
             'unmatched': match['unmatched_records'],
             'spurious': match['spurious_shapes'],
             'style_issues': slide_issues,
+            'pos_issues': pos_issues,
         })
         report['totals']['records'] += len(records)
         report['totals']['matched'] += len(match['pairs'])
         report['totals']['unmatched'] += len(match['unmatched_records'])
         report['totals']['style_issues'] += len(slide_issues)
         report['totals']['spurious'] += len(match['spurious_shapes'])
+        report['totals']['pos_issues'] = report['totals'].get('pos_issues', 0) + len(pos_issues)
 
     return report
 
@@ -410,19 +491,23 @@ def print_report(report: dict, verbose: bool = True) -> None:
     print(f"[format] Slides: meas={report['meas_slides']} pptx={report['pptx_slides']} "
           f"({'OK' if report['slide_count_match'] else 'MISMATCH'})")
     print(f"[format] Records: {t['matched']}/{t['records']} matched, "
-          f"{t['unmatched']} unmatched, {t['style_issues']} style issues, "
-          f"{t['spurious']} spurious shapes")
+          f"{t['unmatched']} unmatched, {t['style_issues']} style, "
+          f"{t.get('pos_issues', 0)} position, {t['spurious']} spurious")
     if not verbose:
         return
     for s in report['slides']:
-        bad = s['unmatched'] or s['style_issues'] or s['spurious']
+        pos_issues = s.get('pos_issues', [])
+        bad = s['unmatched'] or s['style_issues'] or pos_issues or s['spurious']
         if not bad:
             continue
-        print(f"\n  slide {s['index']}: {s['matched']}/{s['records']} records matched")
+        print(f"\n  slide {s['index']}: {s['matched']}/{s['records']} records matched"
+              f" ({len(s['style_issues'])} style, {len(pos_issues)} pos)")
         for ri, why in s['unmatched']:
             print(f"    - LOST [{ri}]: {why}")
         for ri, cat, msg in s['style_issues']:
             print(f"    ! STYLE [{ri}/{cat}]: {msg}")
+        for ri, cat, msg in pos_issues:
+            print(f"    ! POS [{ri}]: {msg}")
         for si in s['spurious']:
             print(f"    + SPURIOUS shape index {si}")
 
@@ -434,6 +519,7 @@ def is_clean(report: dict) -> bool:
         and t['unmatched'] == 0
         and t['style_issues'] == 0
         and t['spurious'] == 0
+        and t.get('pos_issues', 0) == 0
     )
 
 
