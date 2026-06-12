@@ -212,23 +212,6 @@ SlideForge/
 └── README.md
 ```
 
-## ⚙️ 配置
-
-### API 密钥
-
-SlideForge 通过环境变量读取 API 密钥，**切勿直接在代码中硬编码密钥**。
-
-```bash
-# 设置 DeepSeek API 密钥
-export DEEPSEEK_API_KEY='your-deepseek-api-key-here'
-```
-
-你也可以将密钥写入 `.env` 文件（已加入 `.gitignore`，不会提交到仓库）：
-
-```bash
-echo "DEEPSEEK_API_KEY=your-deepseek-api-key-here" > .env
-```
-
 ## 🎯 使用场景
 
 - 快速制作演示文稿原型
