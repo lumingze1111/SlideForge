@@ -2,10 +2,11 @@
 HTML Generator Agent - 根据配色方案和主题生成多页幻灯片 HTML
 
 直接使用 LLM 生成完整的幻灯片内容和 HTML 结构。
+集成研究、事实核查和演讲者备注生成。
 """
 
 import json
-from typing import List
+from typing import List, Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.language_models import BaseChatModel
 from pydantic import BaseModel, Field
@@ -75,8 +76,27 @@ slide_type 说明：
 只输出 JSON，不加代码块标记。"""
 
 
-def generate_outline(llm: BaseChatModel, topic: str, audience: str, pages: int = 8) -> PresentationOutline:
-    """生成演示文稿大纲"""
+def generate_outline(
+    llm: BaseChatModel,
+    topic: str,
+    audience: str,
+    pages: int = 8,
+    key_messages: Optional[List[str]] = None,
+    research_facts: Optional[List[str]] = None
+) -> PresentationOutline:
+    """生成演示文稿大纲（集成研究和事实核查）"""
+    from slideforge.agents.research_agent import search_topic_content
+    from slideforge.agents.fact_checker import check_facts
+    from slideforge.agents.speaker_notes import generate_speaker_notes
+
+    # 1. 研究阶段
+    if key_messages and not research_facts:
+        print("  🔍 正在搜索主题相关内容...")
+        research = search_topic_content(topic, key_messages)
+        research_facts = research.facts
+        print(f"  ✓ 找到 {len(research.facts)} 条核心事实")
+
+    # 2. 生成大纲
     prompt = OUTLINE_PROMPT.format(topic=topic, audience=audience or "通用受众", pages=pages)
     response = llm.invoke([
         SystemMessage(content="You are a presentation writer. Output valid JSON only."),
@@ -87,13 +107,52 @@ def generate_outline(llm: BaseChatModel, topic: str, audience: str, pages: int =
         content = content.split("```json")[1].split("```")[0]
     elif "```" in content:
         content = content.split("```")[1].split("```")[0]
-    data = json.loads(content.strip())
-    return PresentationOutline(**data)
+    try:
+        data = json.loads(content.strip())
+    except json.JSONDecodeError:
+        # 尝试从 content 中提取 JSON 对象
+        start = content.find("{")
+        end = content.rfind("}") + 1
+        if start != -1 and end > start:
+            data = json.loads(content[start:end])
+        else:
+            raise
+    outline = PresentationOutline(**data)
+
+    # 3. 事实核查
+    if research_facts:
+        print("  ✅ 正在核查内容真实性...")
+        all_content = " ".join([s.title + " " + " ".join(s.bullets) for s in outline.slides])
+        fact_check = check_facts(llm, topic, all_content, research_facts)
+        print(f"  ✓ 可信度评分: {fact_check.confidence_score:.2f}")
+        if fact_check.issues:
+            print(f"  ⚠️  发现 {len(fact_check.issues)} 个潜在问题")
+
+    # 4. 生成演讲者备注（所有类型）
+    print("  📝 正在生成演讲者备注...")
+    for slide in outline.slides:
+        content = slide.title
+        if slide.subtitle:
+            content += " " + slide.subtitle
+        if slide.bullets:
+            content += " " + " ".join(slide.bullets)
+        if slide.key_stat:
+            content += f" 关键数据: {slide.key_stat}"
+
+        slide.notes = generate_speaker_notes(
+            llm,
+            slide.title,
+            content,
+            research_facts[:3] if research_facts else []
+        )
+    print("  ✓ 演讲者备注已生成")
+
+    return outline
 
 
 def render_slide_html(slide: SlideContent, colors: dict, index: int, total: int) -> str:
     """将单页幻灯片内容渲染为 HTML"""
-    bg = colors.get("background", colors.get("gradient_bg", "#1a1a2e"))
+    bg = colors.get("gradient_bg", colors.get("background", "#1a1a2e"))
     primary = colors.get("primary", "#7c3aed")
     accent = colors.get("accent", "#f59e0b")
     text_primary = colors.get("text_primary", "#ffffff")
@@ -210,7 +269,6 @@ def render_slide_html(slide: SlideContent, colors: dict, index: int, total: int)
         f'<span style="position:absolute;left:0;color:{accent};font-weight:700;">▸</span>{b}</li>'
         for b in slide.bullets
     )
-    notes_html = f'<p style="margin-top:20px;font-size:14px;color:{text_secondary};opacity:0.7;font-style:italic;">{slide.notes}</p>' if slide.notes else ""
     return f"""<div class="slide" style="{bg_css} color:{text_primary}; position:relative;">
   <div style="padding:50px 80px 0 80px;">
     <h2 style="font-size:38px;font-weight:700;margin-bottom:10px;{title_color_css}">{slide.title}</h2>
@@ -218,7 +276,6 @@ def render_slide_html(slide: SlideContent, colors: dict, index: int, total: int)
   </div>
   <div style="padding:0 80px;">
     <ul style="list-style:none;padding:0;">{bullets_html}</ul>
-    {notes_html}
   </div>
   {page_num}
 </div>"""
@@ -231,10 +288,32 @@ def generate_slides_html(
 ) -> str:
     """将幻灯片大纲渲染为完整 HTML 文件（每页 1280×720）"""
     total = len(outline.slides)
-    slides_html = "\n".join(
-        render_slide_html(s, colors, i + 1, total)
-        for i, s in enumerate(outline.slides)
-    )
+
+    # 渲染幻灯片（添加 data-pptx-slide 和 data-notes 供 PPTX 转换引擎使用）
+    slides_parts = []
+    for i, s in enumerate(outline.slides):
+        slide_html = render_slide_html(s, colors, i + 1, total)
+        # 在 class="slide" 后添加 data-pptx-slide
+        slide_html = slide_html.replace('<div class="slide"', '<div class="slide" data-pptx-slide', 1)
+        # 添加演讲者备注
+        if s.notes:
+            notes_escaped = s.notes.replace('"', '&quot;').replace('\n', '\\n')
+            slide_html = slide_html.replace(
+                '<div class="slide" data-pptx-slide',
+                f'<div class="slide" data-pptx-slide data-notes="{notes_escaped}"',
+                1,
+            )
+        slides_parts.append(slide_html)
+    slides_html = "\n".join(slides_parts)
+
+    # 渲染演讲者备注面板
+    notes_sections = ""
+    for i, s in enumerate(outline.slides):
+        if s.notes:
+            notes_sections += f"""<div class="notes-panel" id="notes-{i+1}">
+  <div class="notes-header">🎤 第 {i+1} 页演讲者备注 — {s.title}</div>
+  <div class="notes-body">{s.notes}</div>
+</div>"""
 
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -246,15 +325,25 @@ def generate_slides_html(
 body {{ background: #111; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }}
 .slide-container {{ display: flex; flex-direction: column; gap: 20px; padding: 20px; max-width: 1280px; margin: 0 auto; }}
 .slide {{ width: 1280px; height: 720px; overflow: hidden; border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.6); flex-shrink: 0; }}
+.notes-panel {{
+  width: 1280px; margin: 0 auto 16px; padding: 20px 24px;
+  background: #1e293b; border-radius: 8px; border-left: 4px solid #4ade80;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}}
+.notes-header {{ font-size: 15px; font-weight: 600; color: #4ade80; margin-bottom: 10px; }}
+.notes-body {{ font-size: 14px; color: #94a3b8; line-height: 1.7; white-space: pre-wrap; }}
 </style>
 </head>
 <body>
 <div class="slide-container">
 {slides_html}
+{notes_sections}
 </div>
 </body>
 </html>"""
 
     from pathlib import Path
-    Path(output_path).write_text(html, encoding="utf-8")
-    return str(Path(output_path).absolute())
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    return str(out.absolute())
