@@ -286,7 +286,7 @@ def run_layout_agent(
     is_middle = not is_first and not is_last
 
     if is_middle:
-        FORCE_RIGHT_SHIFT = 200
+        FORCE_RIGHT_SHIFT = 600
         result = {}
         for el in elements:
             eid = el["id"]
