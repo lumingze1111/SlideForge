@@ -15,7 +15,6 @@ import sys
 import re
 import subprocess
 import argparse
-import base64
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -101,6 +100,46 @@ def extract_code(text: str) -> str:
     return text.strip()
 
 
+def extract_notes(html_path: Path) -> dict[int, str]:
+    """从 HTML 的 data-notes 属性提取演讲者备注。"""
+    html = html_path.read_text(encoding="utf-8")
+    pattern = re.compile(
+        r'<div[^>]*?data-pptx-slide[^>]*?data-notes\s*=\s*"([^"]*)"',
+        re.IGNORECASE,
+    )
+    notes_map = {}
+    for i, m in enumerate(pattern.finditer(html), start=1):
+        notes = m.group(1)
+        notes = notes.replace("&#39;", "'").replace("&quot;", '"').replace("&amp;", "&")
+        notes = notes.replace("&lt;", "<").replace("&gt;", ">")
+        notes = notes.replace("\\n", "\n")
+        if notes.strip():
+            notes_map[i] = notes
+    return notes_map
+
+
+def inject_notes(pptx_path: Path, notes_map: dict[int, str]) -> int:
+    """向 PPTX 注入演讲者备注，返回注入页数。"""
+    from pptx import Presentation
+    prs = Presentation(str(pptx_path))
+    injected = 0
+    for idx, slide in enumerate(prs.slides, start=1):
+        notes_text = notes_map.get(idx)
+        if not notes_text:
+            continue
+        try:
+            notes_slide = slide.notes_slide
+            tf = notes_slide.notes_text_frame
+            tf.clear()
+            tf.paragraphs[0].text = notes_text
+            injected += 1
+        except Exception:
+            pass
+    if injected:
+        prs.save(str(pptx_path))
+    return injected
+
+
 def main():
     parser = argparse.ArgumentParser(description="DeepSeek LLM 直接渲染 HTML → PPTX")
     parser.add_argument("--html", default=str(PROJECT_ROOT / "output" / "slides_你好 旅行者.html"))
@@ -140,7 +179,9 @@ HTML 文件: {html_path}
 ```
 
 请逐页分析 HTML 中每一个 .slide 元素，提取全部文字内容，
-然后用 python-pptx 生成 PPTX。确保每页的标题、列表、数据、装饰元素都完整保留。"""
+然后用 python-pptx 生成 PPTX。确保每页的标题、列表、数据、装饰元素都完整保留。
+
+注意：无需处理演讲者备注，后续会单独注入。"""
 
     print(f"\n🤖 调用 DeepSeek 生成 PPTX 代码...")
     reply = call_deepseek(prompt, api_key)
@@ -183,6 +224,11 @@ HTML 文件: {html_path}
             sys.exit(1)
 
     if output_path.exists():
+        # 注入演讲者备注
+        notes_map = extract_notes(html_path)
+        if notes_map:
+            injected = inject_notes(output_path, notes_map)
+            print(f"   📝 已注入 {injected} 页演讲者备注")
         print(f"\n✅ PPTX 已生成: {output_path}")
         print(f"   文件大小: {output_path.stat().st_size / 1024:.1f} KB")
     else:

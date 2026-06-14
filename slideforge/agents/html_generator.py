@@ -347,3 +347,149 @@ body {{ background: #111; font-family: 'PingFang SC', 'Microsoft YaHei', sans-se
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")
     return str(out.absolute())
+
+
+def generate_slides_html_with_images(
+    outline: PresentationOutline,
+    colors: dict,
+    image_suggestions: list,
+    output_path: str = "slides.html",
+) -> str:
+    """
+    将幻灯片大纲渲染为完整 HTML 文件（支持图片）
+
+    Args:
+        outline: 幻灯片大纲
+        colors: 配色方案
+        image_suggestions: 图片建议列表（ImageSuggestion 对象）
+        output_path: 输出路径
+
+    Returns:
+        输出文件的绝对路径
+    """
+    from pathlib import Path
+    import base64
+
+    total = len(outline.slides)
+
+    # 构建图片索引（按 slide_index 分组）
+    images_by_slide = {}
+    for img in image_suggestions:
+        slide_idx = img.slide_index
+        if slide_idx not in images_by_slide:
+            images_by_slide[slide_idx] = []
+        images_by_slide[slide_idx].append(img)
+
+    # 渲染幻灯片
+    slides_parts = []
+    for i, s in enumerate(outline.slides):
+        slide_html = render_slide_html(s, colors, i + 1, total)
+
+        # 如果有图片建议，插入图片
+        if i in images_by_slide:
+            for img in images_by_slide[i]:
+                # 读取图片并转换为 base64（用于嵌入 HTML）
+                try:
+                    img_path = Path(img.image_url)
+                    if img_path.exists():
+                        with open(img_path, 'rb') as f:
+                            img_data = base64.b64encode(f.read()).decode()
+                            img_src = f"data:image/jpeg;base64,{img_data}"
+
+                        # 根据位置插入图片
+                        if img.position == "background":
+                            # 背景图片
+                            opacity = getattr(img, 'opacity', 0.3)
+                            bg_img_html = f"""
+<div style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;">
+  <img src="{img_src}" style="width:100%;height:100%;object-fit:cover;opacity:{opacity};" alt="{img.description}">
+</div>"""
+                            # 在 slide div 开始后立即插入
+                            slide_html = slide_html.replace(
+                                '<div class="slide"',
+                                f'<div class="slide" style="position:relative;"{bg_img_html}',
+                                1
+                            )
+                            # 确保内容在图片之上
+                            slide_html = slide_html.replace(
+                                '<div style="display:flex',
+                                '<div style="position:relative;z-index:1;display:flex',
+                                1
+                            )
+                            slide_html = slide_html.replace(
+                                '<div style="padding:',
+                                '<div style="position:relative;z-index:1;padding:',
+                                1
+                            )
+
+                        elif img.position == "center":
+                            # 居中图片
+                            width_pct = img.size[0] * 100
+                            height_pct = img.size[1] * 100
+                            img_html = f"""
+<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2;">
+  <img src="{img_src}" style="max-width:{width_pct}%;max-height:{height_pct}%;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.3);" alt="{img.description}">
+</div>"""
+                            slide_html = slide_html.replace('</div>', f'{img_html}</div>', 1)
+
+                except Exception as e:
+                    # 图片读取失败，跳过
+                    print(f"  ⚠ Warning: Failed to load image for slide {i+1}: {e}")
+                    continue
+
+        # 在 class="slide" 后添加 data-pptx-slide
+        slide_html = slide_html.replace('<div class="slide"', '<div class="slide" data-pptx-slide', 1)
+
+        # 添加演讲者备注
+        if s.notes:
+            notes_escaped = s.notes.replace('"', '&quot;').replace('\n', '\\n')
+            slide_html = slide_html.replace(
+                '<div class="slide" data-pptx-slide',
+                f'<div class="slide" data-pptx-slide data-notes="{notes_escaped}"',
+                1,
+            )
+
+        slides_parts.append(slide_html)
+
+    slides_html = "\n".join(slides_parts)
+
+    # 渲染演讲者备注面板
+    notes_sections = ""
+    for i, s in enumerate(outline.slides):
+        if s.notes:
+            notes_sections += f"""<div class="notes-panel" id="notes-{i+1}">
+  <div class="notes-header">🎤 第 {i+1} 页演讲者备注 — {s.title}</div>
+  <div class="notes-body">{s.notes}</div>
+</div>"""
+
+    html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Presentation</title>
+<style>
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+body {{ background: #111; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }}
+.slide-container {{ display: flex; flex-direction: column; gap: 20px; padding: 20px; max-width: 1280px; margin: 0 auto; }}
+.slide {{ width: 1280px; height: 720px; overflow: hidden; border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.6); flex-shrink: 0; }}
+.notes-panel {{
+  width: 1280px; margin: 0 auto 16px; padding: 20px 24px;
+  background: #1e293b; border-radius: 8px; border-left: 4px solid #4ade80;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}}
+.notes-header {{ font-size: 15px; font-weight: 600; color: #4ade80; margin-bottom: 10px; }}
+.notes-body {{ font-size: 14px; color: #94a3b8; line-height: 1.7; white-space: pre-wrap; }}
+</style>
+</head>
+<body>
+<div class="slide-container">
+{slides_html}
+{notes_sections}
+</div>
+</body>
+</html>"""
+
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    return str(out.absolute())
