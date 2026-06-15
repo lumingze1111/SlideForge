@@ -156,11 +156,12 @@ def main() -> None:
     import subprocess
     slides_html_path = str(output_dir / f"slides_{topic[:10]}.html")
 
-    if enhanced_outline and enhanced_outline.images:
+    if enhanced_outline and (enhanced_outline.images or enhanced_outline.charts):
         generate_slides_html_with_images(
             outline,
             chosen_color.colors,
             enhanced_outline.images,
+            enhanced_outline.charts,
             output_path=slides_html_path
         )
     else:

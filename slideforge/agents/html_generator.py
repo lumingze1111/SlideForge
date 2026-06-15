@@ -353,94 +353,63 @@ def generate_slides_html_with_images(
     outline: PresentationOutline,
     colors: dict,
     image_suggestions: list,
+    chart_suggestions: list = None,
     output_path: str = "slides.html",
 ) -> str:
     """
-    将幻灯片大纲渲染为完整 HTML 文件（支持图片）
-
-    Args:
-        outline: 幻灯片大纲
-        colors: 配色方案
-        image_suggestions: 图片建议列表（ImageSuggestion 对象）
-        output_path: 输出路径
-
-    Returns:
-        输出文件的绝对路径
+    将幻灯片大纲渲染为完整 HTML 文件（智能排版，支持图片和图表）
     """
     from pathlib import Path
     import base64
+    from slideforge.layout_strategy import compute_layout
 
     total = len(outline.slides)
 
-    # 构建图片索引（按 slide_index 分组）
+    # 按 slide_index 分组
     images_by_slide = {}
     for img in image_suggestions:
-        slide_idx = img.slide_index
-        if slide_idx not in images_by_slide:
-            images_by_slide[slide_idx] = []
-        images_by_slide[slide_idx].append(img)
+        images_by_slide.setdefault(img.slide_index, []).append(img)
 
-    # 渲染幻灯片
+    charts_by_slide = {}
+    for chart in (chart_suggestions or []):
+        charts_by_slide.setdefault(chart.slide_index, []).append(chart)
+
     slides_parts = []
     for i, s in enumerate(outline.slides):
+        has_image = i in images_by_slide
+        has_chart = i in charts_by_slide
+
+        img_position = images_by_slide[i][0].position if has_image else "auto"
+        chart_layout_hint = charts_by_slide[i][0].layout if has_chart else "auto"
+
+        # 计算排版策略
+        layout = compute_layout(
+            slide_type=s.slide_type,
+            has_image=has_image,
+            has_chart=has_chart,
+            image_position=img_position,
+            chart_layout=chart_layout_hint,
+        )
+
+        # 渲染幻灯片内容（可能压缩宽度）
         slide_html = render_slide_html(s, colors, i + 1, total)
+        if layout.content_width_pct < 0.95:
+            slide_html = _adjust_content_width(slide_html, layout.content_width_pct)
 
-        # 如果有图片建议，插入图片
-        if i in images_by_slide:
-            for img in images_by_slide[i]:
-                # 读取图片并转换为 base64（用于嵌入 HTML）
-                try:
-                    img_path = Path(img.image_url)
-                    if img_path.exists():
-                        with open(img_path, 'rb') as f:
-                            img_data = base64.b64encode(f.read()).decode()
-                            img_src = f"data:image/jpeg;base64,{img_data}"
+        # 插入图片
+        if layout.image_slot and has_image:
+            img = images_by_slide[i][0]
+            slide_html = _insert_image_at_slot(slide_html, img, layout.image_slot)
 
-                        # 根据位置插入图片
-                        if img.position == "background":
-                            # 背景图片
-                            opacity = getattr(img, 'opacity', 0.3)
-                            bg_img_html = f"""
-<div style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;">
-  <img src="{img_src}" style="width:100%;height:100%;object-fit:cover;opacity:{opacity};" alt="{img.description}">
-</div>"""
-                            # 在 slide div 开始后立即插入
-                            slide_html = slide_html.replace(
-                                '<div class="slide"',
-                                f'<div class="slide" style="position:relative;"{bg_img_html}',
-                                1
-                            )
-                            # 确保内容在图片之上
-                            slide_html = slide_html.replace(
-                                '<div style="display:flex',
-                                '<div style="position:relative;z-index:1;display:flex',
-                                1
-                            )
-                            slide_html = slide_html.replace(
-                                '<div style="padding:',
-                                '<div style="position:relative;z-index:1;padding:',
-                                1
-                            )
+        # 插入图表
+        if layout.chart_slot and has_chart:
+            chart = charts_by_slide[i][0]
+            slide_html = _insert_chart_at_slot(slide_html, chart, layout.chart_slot, colors)
 
-                        elif img.position == "center":
-                            # 居中图片
-                            width_pct = img.size[0] * 100
-                            height_pct = img.size[1] * 100
-                            img_html = f"""
-<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2;">
-  <img src="{img_src}" style="max-width:{width_pct}%;max-height:{height_pct}%;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.3);" alt="{img.description}">
-</div>"""
-                            slide_html = slide_html.replace('</div>', f'{img_html}</div>', 1)
-
-                except Exception as e:
-                    # 图片读取失败，跳过
-                    print(f"  ⚠ Warning: Failed to load image for slide {i+1}: {e}")
-                    continue
-
-        # 在 class="slide" 后添加 data-pptx-slide
+        # data-pptx-slide 标记
         slide_html = slide_html.replace('<div class="slide"', '<div class="slide" data-pptx-slide', 1)
 
-        # 添加演讲者备注
+        # 演讲者备注
         if s.notes:
             notes_escaped = s.notes.replace('"', '&quot;').replace('\n', '\\n')
             slide_html = slide_html.replace(
@@ -453,7 +422,6 @@ def generate_slides_html_with_images(
 
     slides_html = "\n".join(slides_parts)
 
-    # 渲染演讲者备注面板
     notes_sections = ""
     for i, s in enumerate(outline.slides):
         if s.notes:
@@ -471,7 +439,7 @@ def generate_slides_html_with_images(
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 body {{ background: #111; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }}
 .slide-container {{ display: flex; flex-direction: column; gap: 20px; padding: 20px; max-width: 1280px; margin: 0 auto; }}
-.slide {{ width: 1280px; height: 720px; overflow: hidden; border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.6); flex-shrink: 0; }}
+.slide {{ width: 1280px; height: 720px; overflow: hidden; border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.6); flex-shrink: 0; position: relative; }}
 .notes-panel {{
   width: 1280px; margin: 0 auto 16px; padding: 20px 24px;
   background: #1e293b; border-radius: 8px; border-left: 4px solid #4ade80;
@@ -493,3 +461,312 @@ body {{ background: #111; font-family: 'PingFang SC', 'Microsoft YaHei', sans-se
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")
     return str(out.absolute())
+
+
+# ──────────────────────────────────────────────────────────────────────
+# 排版辅助函数
+# ──────────────────────────────────────────────────────────────────────
+
+def _adjust_content_width(slide_html: str, content_width_pct: float) -> str:
+    """压缩内容区域宽度，为右侧媒体腾出空间"""
+    # 原有 padding 是 0 80px，可用宽度 1120px
+    # 通过增大 padding-right 来压缩内容
+    content_max_width = int(1120 * content_width_pct)
+    right_padding = 1280 - 80 - content_max_width
+
+    # 替换各种 padding 模式
+    replacements = [
+        ('padding:50px 80px 0 80px;', f'padding:50px {right_padding}px 0 80px;'),
+        ('padding:0 80px;', f'padding:0 {right_padding}px 0 80px;'),
+        ('padding:60px 100px;', f'padding:60px {right_padding}px 60px 100px;'),
+        ('padding:60px 120px;', f'padding:60px {right_padding}px 60px 120px;'),
+    ]
+    for old, new in replacements:
+        if old in slide_html:
+            slide_html = slide_html.replace(old, new, 1)
+            break
+
+    return slide_html
+
+
+def _insert_image_at_slot(slide_html: str, img, slot) -> str:
+    """在指定插槽位置插入图片"""
+    import base64
+    from pathlib import Path
+
+    try:
+        img_path = Path(img.image_url)
+        if not img_path.exists():
+            return slide_html
+
+        with open(img_path, 'rb') as f:
+            img_data = base64.b64encode(f.read()).decode()
+        img_src = f"data:image/jpeg;base64,{img_data}"
+    except Exception:
+        return slide_html
+
+    if slot.slot_type == "background":
+        bg_html = (
+            f'<div style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:{slot.z_index};">'
+            f'<img src="{img_src}" style="width:100%;height:100%;object-fit:cover;opacity:{slot.opacity};" alt="{img.description}">'
+            f'</div>'
+        )
+        # 在 slide div 之后、第一个子元素之前插入
+        slide_html = slide_html.replace(
+            '<div class="slide"',
+            f'<div class="slide"',
+            1
+        )
+        # 找到第一个 > 后插入背景
+        idx = slide_html.find('>', slide_html.find('<div class="slide"'))
+        if idx != -1:
+            slide_html = slide_html[:idx+1] + bg_html + slide_html[idx+1:]
+
+        # 确保内容层级在图片之上
+        slide_html = slide_html.replace(
+            '<div style="display:flex',
+            '<div style="position:relative;z-index:1;display:flex',
+            1
+        )
+        slide_html = slide_html.replace(
+            '<div style="padding:',
+            '<div style="position:relative;z-index:1;padding:',
+            1
+        )
+
+    elif slot.slot_type in ("inline-right", "inline-left"):
+        img_html = (
+            f'<div style="position:absolute;top:{slot.y}px;left:{slot.x}px;'
+            f'width:{slot.width}px;height:{slot.height}px;z-index:{slot.z_index};'
+            f'display:flex;align-items:center;justify-content:center;">'
+            f'<img src="{img_src}" style="max-width:100%;max-height:100%;'
+            f'object-fit:cover;border-radius:12px;'
+            f'box-shadow:0 8px 24px rgba(0,0,0,0.4);opacity:{slot.opacity};" alt="{img.description}">'
+            f'</div>'
+        )
+        # 在 slide 闭合标签前插入
+        last_close = slide_html.rfind('</div>')
+        slide_html = slide_html[:last_close] + img_html + slide_html[last_close:]
+
+    return slide_html
+
+
+def _insert_chart_at_slot(slide_html: str, chart, slot, colors: dict) -> str:
+    """在指定插槽位置插入图表"""
+    import base64
+    from pathlib import Path
+
+    chart_html = ""
+
+    # 优先使用 matplotlib 图片
+    if hasattr(chart, 'chart_path') and chart.chart_path:
+        try:
+            img_path = Path(chart.chart_path)
+            if img_path.exists():
+                with open(img_path, 'rb') as f:
+                    img_data = base64.b64encode(f.read()).decode()
+                chart_html = (
+                    f'<div style="position:absolute;top:{slot.y}px;left:{slot.x}px;'
+                    f'width:{slot.width}px;height:{slot.height}px;z-index:{slot.z_index};'
+                    f'display:flex;align-items:center;justify-content:center;'
+                    f'background:{colors.get("surface", "#1e293b")};border-radius:12px;'
+                    f'box-shadow:0 4px 16px rgba(0,0,0,0.3);">'
+                    f'<img src="data:image/png;base64,{img_data}" '
+                    f'style="max-width:95%;max-height:95%;object-fit:contain;">'
+                    f'</div>'
+                )
+        except Exception:
+            pass
+
+    # 用 native_config 渲染 CSS 图表
+    if not chart_html and hasattr(chart, 'native_config') and chart.native_config:
+        config = chart.native_config
+        chart_type = config.get("type", "bar")
+
+        if chart_type == "bar":
+            chart_html = _render_bar_chart_html(config, slot, colors)
+        elif chart_type == "pie":
+            chart_html = _render_pie_chart_html(config, slot, colors)
+        elif chart_type == "line":
+            chart_html = _render_line_chart_html(config, slot, colors)
+        elif chart_type == "table":
+            chart_html = _render_table_chart_html(config, slot, colors)
+
+    if chart_html:
+        last_close = slide_html.rfind('</div>')
+        slide_html = slide_html[:last_close] + chart_html + slide_html[last_close:]
+
+    return slide_html
+
+
+# ──────────────────────────────────────────────────────────────────────
+# CSS 原生图表渲染
+# ──────────────────────────────────────────────────────────────────────
+
+def _render_bar_chart_html(config: dict, slot, colors: dict) -> str:
+    """CSS flexbox 柱状图"""
+    categories = config.get("categories", [])
+    series = config.get("series", [{}])
+    values = series[0].get("values", []) if series else []
+    if not values:
+        return ""
+
+    max_val = max(values) if values else 1
+    accent = colors.get("accent", "#f59e0b")
+    surface = colors.get("surface", "#1e293b")
+    text_primary = colors.get("text_primary", "#ffffff")
+    text_secondary = colors.get("text_secondary", "#94a3b8")
+
+    bars_html = ""
+    for cat, val in zip(categories, values):
+        bar_h = int((val / max_val) * 70)
+        bars_html += (
+            f'<div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:4px;">'
+            f'<div style="font-size:11px;color:{text_secondary};">{val}</div>'
+            f'<div style="width:70%;height:{bar_h}%;background:{accent};border-radius:4px 4px 0 0;min-height:8px;"></div>'
+            f'<div style="font-size:10px;color:{text_secondary};text-align:center;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">{cat}</div>'
+            f'</div>'
+        )
+
+    title = config.get("title", "")
+    return (
+        f'<div style="position:absolute;top:{slot.y}px;left:{slot.x}px;'
+        f'width:{slot.width}px;height:{slot.height}px;z-index:{slot.z_index};'
+        f'background:{surface};border-radius:12px;padding:20px;'
+        f'display:flex;flex-direction:column;box-shadow:0 4px 16px rgba(0,0,0,0.3);">'
+        f'<div style="font-size:14px;font-weight:600;color:{text_primary};margin-bottom:16px;">{title}</div>'
+        f'<div style="flex:1;display:flex;align-items:flex-end;gap:6px;padding-bottom:8px;">'
+        f'{bars_html}</div></div>'
+    )
+
+
+def _render_pie_chart_html(config: dict, slot, colors: dict) -> str:
+    """CSS conic-gradient 饼图"""
+    categories = config.get("categories", [])
+    values = config.get("values", [])
+    if not values:
+        return ""
+
+    total = sum(values)
+    if total == 0:
+        return ""
+
+    surface = colors.get("surface", "#1e293b")
+    text_primary = colors.get("text_primary", "#ffffff")
+    text_secondary = colors.get("text_secondary", "#94a3b8")
+
+    pie_colors = ['#7c3aed', '#f59e0b', '#10b981', '#ef4444', '#3b82f6', '#ec4899', '#14b8a6', '#f97316']
+
+    # 构建 conic-gradient
+    segments = []
+    cumulative = 0
+    for i, val in enumerate(values):
+        start_pct = (cumulative / total) * 100
+        cumulative += val
+        end_pct = (cumulative / total) * 100
+        color = pie_colors[i % len(pie_colors)]
+        segments.append(f'{color} {start_pct:.1f}% {end_pct:.1f}%')
+
+    gradient = ', '.join(segments)
+
+    # 图例
+    legend_html = ""
+    for i, (cat, val) in enumerate(zip(categories, values)):
+        color = pie_colors[i % len(pie_colors)]
+        pct = int((val / total) * 100)
+        legend_html += (
+            f'<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:{text_secondary};">'
+            f'<div style="width:10px;height:10px;border-radius:2px;background:{color};flex-shrink:0;"></div>'
+            f'{cat} ({pct}%)</div>'
+        )
+
+    title = config.get("title", "")
+    pie_size = min(slot.width, slot.height) - 120
+    return (
+        f'<div style="position:absolute;top:{slot.y}px;left:{slot.x}px;'
+        f'width:{slot.width}px;height:{slot.height}px;z-index:{slot.z_index};'
+        f'background:{surface};border-radius:12px;padding:20px;'
+        f'display:flex;flex-direction:column;align-items:center;box-shadow:0 4px 16px rgba(0,0,0,0.3);">'
+        f'<div style="font-size:14px;font-weight:600;color:{text_primary};margin-bottom:12px;align-self:flex-start;">{title}</div>'
+        f'<div style="width:{pie_size}px;height:{pie_size}px;border-radius:50%;'
+        f'background:conic-gradient({gradient});margin:8px 0;"></div>'
+        f'<div style="display:flex;flex-wrap:wrap;gap:8px 16px;justify-content:center;">'
+        f'{legend_html}</div></div>'
+    )
+
+
+def _render_line_chart_html(config: dict, slot, colors: dict) -> str:
+    """SVG 折线图"""
+    categories = config.get("categories", [])
+    series = config.get("series", [{}])
+    values = series[0].get("values", []) if series else []
+    if not values:
+        return ""
+
+    surface = colors.get("surface", "#1e293b")
+    text_primary = colors.get("text_primary", "#ffffff")
+    text_secondary = colors.get("text_secondary", "#94a3b8")
+    accent = colors.get("accent", "#f59e0b")
+
+    # SVG 坐标
+    svg_w = slot.width - 80
+    svg_h = slot.height - 120
+    max_val = max(values) if values else 1
+    min_val = min(values) if values else 0
+    val_range = max_val - min_val if max_val != min_val else 1
+
+    points = []
+    for j, val in enumerate(values):
+        x = int((j / max(len(values) - 1, 1)) * svg_w)
+        y = int(svg_h - ((val - min_val) / val_range) * svg_h)
+        points.append(f"{x},{y}")
+
+    polyline = ' '.join(points)
+
+    # X 轴标签
+    x_labels = ""
+    for j, cat in enumerate(categories):
+        x = int((j / max(len(categories) - 1, 1)) * svg_w)
+        x_labels += f'<text x="{x}" y="{svg_h + 18}" font-size="10" fill="{text_secondary}" text-anchor="middle">{cat}</text>'
+
+    title = config.get("title", "")
+    return (
+        f'<div style="position:absolute;top:{slot.y}px;left:{slot.x}px;'
+        f'width:{slot.width}px;height:{slot.height}px;z-index:{slot.z_index};'
+        f'background:{surface};border-radius:12px;padding:20px;'
+        f'display:flex;flex-direction:column;box-shadow:0 4px 16px rgba(0,0,0,0.3);">'
+        f'<div style="font-size:14px;font-weight:600;color:{text_primary};margin-bottom:12px;">{title}</div>'
+        f'<svg width="{svg_w}" height="{svg_h + 30}" style="margin:auto;">'
+        f'<polyline points="{polyline}" fill="none" stroke="{accent}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>'
+        f'{x_labels}</svg></div>'
+    )
+
+
+def _render_table_chart_html(config: dict, slot, colors: dict) -> str:
+    """HTML 表格"""
+    headers = config.get("headers", [])
+    rows = config.get("rows", [])
+    if not headers:
+        return ""
+
+    surface = colors.get("surface", "#1e293b")
+    text_primary = colors.get("text_primary", "#ffffff")
+    text_secondary = colors.get("text_secondary", "#94a3b8")
+    border = colors.get("border", "#475569")
+
+    th_html = "".join(f'<th style="padding:8px 12px;text-align:left;border-bottom:2px solid {border};color:{text_primary};font-size:12px;">{h}</th>' for h in headers)
+    tr_html = ""
+    for row in rows[:8]:  # 最多显示 8 行
+        cells = "".join(f'<td style="padding:6px 12px;border-bottom:1px solid {border};color:{text_secondary};font-size:11px;">{c}</td>' for c in row)
+        tr_html += f'<tr>{cells}</tr>'
+
+    title = config.get("title", "")
+    return (
+        f'<div style="position:absolute;top:{slot.y}px;left:{slot.x}px;'
+        f'width:{slot.width}px;height:{slot.height}px;z-index:{slot.z_index};'
+        f'background:{surface};border-radius:12px;padding:20px;overflow:hidden;'
+        f'box-shadow:0 4px 16px rgba(0,0,0,0.3);">'
+        f'<div style="font-size:14px;font-weight:600;color:{text_primary};margin-bottom:12px;">{title}</div>'
+        f'<table style="width:100%;border-collapse:collapse;"><thead><tr>{th_html}</tr></thead>'
+        f'<tbody>{tr_html}</tbody></table></div>'
+    )
