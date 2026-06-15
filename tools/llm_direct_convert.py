@@ -69,6 +69,54 @@ def read_html(html_path: Path) -> str:
         return f.read()
 
 
+def strip_base64_for_llm(html: str) -> tuple[str, list[dict]]:
+    """
+    从 HTML 中剥离 base64 图片数据，用占位符替换。
+    返回 (精简后的 HTML, 图片信息列表)
+
+    这样 LLM 只需处理文本和布局，图片后续单独插入。
+    """
+    images = []
+    counter = [0]
+
+    def replace_base64(match):
+        full_tag = match.group(0)
+        counter[0] += 1
+        img_id = f"IMG_PLACEHOLDER_{counter[0]}"
+
+        # 提取 style 中的位置信息
+        style_match = re.search(r'style="([^"]*)"', full_tag)
+        style = style_match.group(1) if style_match else ""
+
+        # 提取 alt 信息
+        alt_match = re.search(r'alt="([^"]*)"', full_tag)
+        alt = alt_match.group(1) if alt_match else ""
+
+        images.append({
+            "id": img_id,
+            "style": style,
+            "alt": alt,
+            "index": counter[0],
+        })
+
+        return f'<img src="[{img_id}]" style="{style}" alt="{alt}">'
+
+    # 匹配包含 base64 数据的 img 标签
+    pattern = r'<img\s+[^>]*src="data:image/[^"]*"[^>]*>'
+    stripped = re.sub(pattern, replace_base64, html)
+
+    return stripped, images
+
+
+def truncate_html_for_llm(html: str, max_chars: int = 50000) -> str:
+    """
+    如果 HTML 仍然过长，截取前 N 个字符并标注。
+    """
+    if len(html) <= max_chars:
+        return html
+    return html[:max_chars] + "\n\n<!-- HTML 已截断，后续内容省略 -->"
+
+
 def call_deepseek(user_prompt: str, api_key: str) -> str:
     """调用 DeepSeek API，返回生成的 Python 代码"""
     from openai import OpenAI
@@ -140,6 +188,92 @@ def inject_notes(pptx_path: Path, notes_map: dict[int, str]) -> int:
     return injected
 
 
+def inject_images_to_pptx(pptx_path: Path, html_content: str) -> int:
+    """
+    从原始 HTML 中提取 base64 图片，注入到 PPTX 的对应页面中。
+    只处理背景图片和 inline 图片。
+    """
+    import base64
+    import io
+    from pptx import Presentation
+    from pptx.util import Inches, Emu
+
+    # 提取每个 slide 中的图片
+    slide_pattern = re.compile(
+        r'<div\s+class="slide"[^>]*>(.*?)</div>\s*(?=<div\s+class="slide"|</div>\s*</div>\s*</body>)',
+        re.DOTALL
+    )
+    img_pattern = re.compile(
+        r'<img\s+src="data:image/(jpeg|png);base64,([^"]+)"[^>]*>',
+        re.DOTALL
+    )
+
+    # 按 slide 分组提取图片
+    slide_images = {}
+    for slide_idx, slide_match in enumerate(slide_pattern.finditer(html_content)):
+        slide_html = slide_match.group(1)
+        imgs = img_pattern.findall(slide_html)
+        if imgs:
+            slide_images[slide_idx] = imgs  # [(format, base64_data), ...]
+
+    if not slide_images:
+        return 0
+
+    try:
+        prs = Presentation(str(pptx_path))
+        injected = 0
+
+        for slide_idx, imgs in slide_images.items():
+            if slide_idx >= len(prs.slides):
+                continue
+
+            slide = prs.slides[slide_idx]
+            # 只插入第一张图片作为背景（避免过多图片）
+            img_format, img_b64 = imgs[0]
+
+            try:
+                img_bytes = base64.b64decode(img_b64)
+                img_stream = io.BytesIO(img_bytes)
+
+                # 作为全页背景图片插入（放在最底层）
+                slide_width = prs.slide_width
+                slide_height = prs.slide_height
+
+                pic = slide.shapes.add_picture(
+                    img_stream,
+                    left=0, top=0,
+                    width=slide_width,
+                    height=slide_height
+                )
+
+                # 移动到最底层
+                slide.shapes._spTree.remove(pic._element)
+                slide.shapes._spTree.insert(2, pic._element)
+
+                # 设置透明度（通过 alpha 通道模拟）
+                from pptx.oxml.ns import qn
+                from lxml import etree
+                blipFill = pic._element.find(qn('p:blipFill'))
+                if blipFill is not None:
+                    blip = blipFill.find(qn('a:blip'))
+                    if blip is not None:
+                        alphaModFix = etree.SubElement(blip, qn('a:alphaModFix'))
+                        alphaModFix.set('amt', '25000')  # 25% 不透明度
+
+                injected += 1
+
+            except Exception:
+                continue
+
+        if injected:
+            prs.save(str(pptx_path))
+
+        return injected
+
+    except Exception:
+        return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description="DeepSeek LLM 直接渲染 HTML → PPTX")
     parser.add_argument("--html", default=str(PROJECT_ROOT / "output" / "slides_你好 旅行者.html"))
@@ -167,19 +301,33 @@ def main():
     html_content = read_html(html_path)
     print(f"   文件大小: {len(html_content):,} 字符")
 
-    # 发送完整 HTML，deepseek-chat 支持 64K 上下文
+    # 剥离 base64 图片数据，避免超出 API 上下文限制
+    stripped_html, image_placeholders = strip_base64_for_llm(html_content)
+    stripped_html = truncate_html_for_llm(stripped_html, max_chars=50000)
+    print(f"   精简后大小: {len(stripped_html):,} 字符（剥离 {len(image_placeholders)} 张图片）")
+
+    # 构建 prompt
+    image_note = ""
+    if image_placeholders:
+        image_note = f"""
+注意：HTML 中原有 {len(image_placeholders)} 张 base64 图片已用占位符 [IMG_PLACEHOLDER_N] 替换。
+在生成的代码中，请用注释标记图片位置即可（如 # TODO: insert image here），不要尝试嵌入图片数据。
+图片会在后续步骤单独处理。"""
+
     prompt = f"""请将以下 HTML 幻灯片文件完整转换为 PPTX。
 
 HTML 文件: {html_path}
 输出 PPTX: {output_path}
+{image_note}
 
-完整 HTML 内容如下：
+精简后的 HTML 内容如下：
 ```html
-{html_content}
+{stripped_html}
 ```
 
 请逐页分析 HTML 中每一个 .slide 元素，提取全部文字内容，
 然后用 python-pptx 生成 PPTX。确保每页的标题、列表、数据、装饰元素都完整保留。
+对于图表（CSS 柱状图、饼图等），请用 python-pptx 的图表 API 或形状模拟还原。
 
 注意：无需处理演讲者备注，后续会单独注入。"""
 
@@ -224,6 +372,12 @@ HTML 文件: {html_path}
             sys.exit(1)
 
     if output_path.exists():
+        # 注入图片（从原始 HTML 中提取 base64 图片并插入 PPTX）
+        if image_placeholders:
+            injected_imgs = inject_images_to_pptx(output_path, html_content)
+            if injected_imgs:
+                print(f"   🖼️ 已注入 {injected_imgs} 张图片")
+
         # 注入演讲者备注
         notes_map = extract_notes(html_path)
         if notes_map:
