@@ -271,7 +271,8 @@ class ContentEnhancementAgent:
     def enhance_outline(
         self,
         outline: PresentationOutline,
-        colors: ColorProposal
+        colors: ColorProposal,
+        topic: str = "",
     ) -> EnhancedOutline:
         """增强大纲"""
         enhanced = EnhancedOutline(slides=outline.slides, images=[], charts=[])
@@ -279,7 +280,7 @@ class ContentEnhancementAgent:
         for slide_index, slide in enumerate(outline.slides):
             try:
                 self._current_image_context = build_image_query_context(
-                    topic=slide.title,
+                    topic=topic or slide.title,
                     slide_index=slide_index,
                     slide=slide,
                 )

@@ -156,3 +156,21 @@ def test_search_best_image_queries_multiple_candidates_and_downloads_only_select
     assert image_tool.search.call_args.kwargs["limit"] == 6
     assert image_tool.search.call_args.kwargs["orientation"] == "landscape"
     image_tool.download_image.assert_called_once_with(selected, str(result.image_path))
+
+
+def test_build_image_query_context_uses_global_topic_for_queries():
+    slide = SlideContent(
+        slide_type="content",
+        title="商业价值",
+        bullets=["球鞋合作", "品牌影响力"],
+    )
+
+    context = build_image_query_context(
+        topic="Stephen Curry",
+        slide_index=7,
+        slide=slide,
+        requested_keywords="brand partnership",
+    )
+    queries = build_image_queries(context)
+
+    assert queries[0] == "Stephen Curry 商业价值 brand partnership"
