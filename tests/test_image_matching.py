@@ -1,8 +1,10 @@
 from slideforge.agents.html_generator import SlideContent
+from slideforge.tools.image_search import ImageResult, ImageSource
 from slideforge.tools.image_matching import (
     ImageQueryContext,
     build_image_query_context,
     build_image_queries,
+    choose_best_image,
 )
 
 
@@ -47,3 +49,74 @@ def test_build_image_queries_include_topic_title_and_requested_keywords():
     assert "Stephen Curry Three Point Revolution" in queries
     assert "Stephen Curry NBA basketball" in queries
     assert len(queries) == len(set(queries))
+
+
+def _image(description, width=1920, height=1080):
+    return ImageResult(
+        url=f"https://example.com/{description.replace(' ', '-')}.jpg",
+        description=description,
+        author="Test",
+        source=ImageSource.UNSPLASH,
+        width=width,
+        height=height,
+        download_url=f"https://example.com/{description.replace(' ', '-')}-raw.jpg",
+    )
+
+
+def test_choose_best_image_prefers_slide_relevant_basketball_candidate():
+    context = ImageQueryContext(
+        topic="Stephen Curry",
+        slide_index=2,
+        slide_type="content",
+        slide_title="Three Point Revolution",
+        slide_text="NBA Warriors basketball shooting deep threes",
+        requested_keywords="three point shooting",
+    )
+    candidates = [
+        _image("Office desk with marketing documents"),
+        _image("Soccer player celebrating a goal"),
+        _image("Basketball player shooting a three point shot in NBA arena"),
+        _image("Traditional architecture at sunset"),
+    ]
+
+    selected = choose_best_image(context, candidates)
+
+    assert selected is not None
+    assert selected.description == "Basketball player shooting a three point shot in NBA arena"
+
+
+def test_choose_best_image_rejects_unrelated_candidates():
+    context = ImageQueryContext(
+        topic="Stephen Curry",
+        slide_index=2,
+        slide_type="content",
+        slide_title="Three Point Revolution",
+        slide_text="NBA Warriors basketball shooting deep threes",
+        requested_keywords="three point shooting",
+    )
+    candidates = [
+        _image("Office desk with laptop"),
+        _image("Traditional architecture at sunset"),
+        _image("Wedding flowers on a table"),
+    ]
+
+    selected = choose_best_image(context, candidates)
+
+    assert selected is None
+
+
+def test_choose_best_image_prefers_landscape_when_relevance_is_close():
+    context = ImageQueryContext(
+        topic="NBA",
+        slide_index=1,
+        slide_type="cover",
+        slide_title="Global Basketball Business",
+        slide_text="NBA basketball league arena fans",
+        requested_keywords="basketball arena",
+    )
+    portrait = _image("Basketball arena fans", width=900, height=1400)
+    landscape = _image("Basketball arena fans", width=1920, height=1080)
+
+    selected = choose_best_image(context, [portrait, landscape])
+
+    assert selected is landscape
