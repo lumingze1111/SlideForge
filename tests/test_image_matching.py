@@ -1,3 +1,5 @@
+from unittest.mock import Mock
+
 from slideforge.agents.html_generator import SlideContent
 from slideforge.tools.image_search import ImageResult, ImageSource
 from slideforge.tools.image_matching import (
@@ -5,6 +7,7 @@ from slideforge.tools.image_matching import (
     build_image_query_context,
     build_image_queries,
     choose_best_image,
+    search_best_image,
 )
 
 
@@ -120,3 +123,36 @@ def test_choose_best_image_prefers_landscape_when_relevance_is_close():
     selected = choose_best_image(context, [portrait, landscape])
 
     assert selected is landscape
+
+
+def test_search_best_image_queries_multiple_candidates_and_downloads_only_selected(tmp_path):
+    context = ImageQueryContext(
+        topic="Stephen Curry",
+        slide_index=2,
+        slide_type="content",
+        slide_title="Three Point Revolution",
+        slide_text="NBA Warriors basketball shooting deep threes",
+        requested_keywords="three point shooting",
+    )
+    unrelated = _image("Office desk with laptop")
+    selected = _image("Basketball player shooting a three point shot in NBA arena")
+    image_tool = Mock()
+    image_tool.search.side_effect = [
+        [unrelated, selected],
+    ]
+    image_tool.download_image.return_value = str(tmp_path / "image.jpg")
+
+    result = search_best_image(
+        image_tool=image_tool,
+        context=context,
+        output_dir=tmp_path,
+        preferred_source=ImageSource.UNSPLASH,
+    )
+
+    assert result is not None
+    assert result.image is selected
+    assert result.image_path.name.startswith("image_")
+    image_tool.search.assert_called_once()
+    assert image_tool.search.call_args.kwargs["limit"] == 6
+    assert image_tool.search.call_args.kwargs["orientation"] == "landscape"
+    image_tool.download_image.assert_called_once_with(selected, str(result.image_path))

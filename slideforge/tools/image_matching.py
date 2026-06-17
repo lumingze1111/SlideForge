@@ -8,10 +8,13 @@ and scores provider metadata before any image is downloaded.
 from __future__ import annotations
 
 import re
+import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterable, Sequence
 
 from slideforge.agents.html_generator import SlideContent
+from slideforge.tools.image_search import ImageSearchError
 
 
 @dataclass(frozen=True)
@@ -22,6 +25,12 @@ class ImageQueryContext:
     slide_title: str
     slide_text: str
     requested_keywords: str = ""
+
+
+@dataclass(frozen=True)
+class SelectedImage:
+    image: object
+    image_path: Path
 
 
 UNRELATED_TERMS = {
@@ -159,3 +168,39 @@ def choose_best_image(context: ImageQueryContext, candidates: Sequence) -> objec
             best = image
             best_score = score
     return best
+
+
+def search_best_image(
+    image_tool,
+    context: ImageQueryContext,
+    output_dir: Path,
+    preferred_source=None,
+) -> SelectedImage | None:
+    queries = build_image_queries(context)
+    candidates = []
+    last_error = None
+
+    for query in queries:
+        try:
+            results = image_tool.search(
+                query=query,
+                limit=6,
+                orientation="landscape",
+                preferred_source=preferred_source,
+            )
+            candidates.extend(results)
+            if candidates:
+                break
+        except ImageSearchError as exc:
+            last_error = exc
+            continue
+
+    selected = choose_best_image(context, candidates)
+    if selected is None:
+        if last_error is not None and not candidates:
+            raise last_error
+        return None
+
+    image_path = Path(output_dir) / f"image_{uuid.uuid4().hex[:8]}.jpg"
+    image_tool.download_image(selected, str(image_path))
+    return SelectedImage(image=selected, image_path=image_path)
