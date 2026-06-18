@@ -1,9 +1,11 @@
 from slideforge.agents.propose_agent import (
     ColorProposal,
     DesignProposals,
+    SYSTEM_PROMPT,
     _analyze_background,
     _backgrounds_are_similar,
     diversify_color_proposals,
+    run_propose_agent,
 )
 
 
@@ -111,3 +113,47 @@ def test_diversify_color_proposals_preserves_short_or_invalid_sets():
 
     assert [proposal.name for proposal in result.proposals] == ["invalid one", "invalid two"]
     assert result.recommended_index == 0
+
+
+def test_prompt_requires_distinct_metaphor_lanes():
+    assert "视觉隐喻" in SYSTEM_PROMPT
+    assert "品牌身份" in SYSTEM_PROMPT
+    assert "环境场景" in SYSTEM_PROMPT
+    assert "数据/科技" in SYSTEM_PROMPT
+    assert "人物情绪" in SYSTEM_PROMPT
+
+
+class _StructuredLLM:
+    def __init__(self, response):
+        self.response = response
+
+    def invoke(self, prompt):
+        return self.response
+
+
+class _FakeLLM:
+    def __init__(self, response):
+        self.response = response
+
+    def with_structured_output(self, schema):
+        return _StructuredLLM(self.response)
+
+
+def test_run_propose_agent_diversifies_structured_output():
+    raw = DesignProposals(
+        proposals=[
+            _proposal("dark blue one", "linear-gradient(135deg, #0f2027 0%, #203a43 100%)"),
+            _proposal("dark blue duplicate", "linear-gradient(140deg, #102331 0%, #24475a 100%)"),
+            _proposal("warm light", "linear-gradient(135deg, #fff7ed 0%, #fb923c 100%)"),
+            _proposal("green radial", "radial-gradient(circle, #064e3b 0%, #22c55e 100%)"),
+        ],
+        recommended_index=0,
+    )
+
+    result = run_propose_agent(_FakeLLM(raw), topic="Demo")
+
+    assert [proposal.name for proposal in result.proposals] == [
+        "dark blue one",
+        "warm light",
+        "green radial",
+    ]
