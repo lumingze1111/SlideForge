@@ -4,6 +4,9 @@ Propose Agent - 根据主题生成多套定制设计方案
 不使用固定模版，而是让 LLM 根据主题和受众动态创造配色+视觉风格。
 """
 
+import colorsys
+import re
+from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from pydantic import BaseModel, Field
@@ -65,6 +68,133 @@ class DesignProposals(BaseModel):
     """多套设计方案提案集合"""
     proposals: List[ColorProposal] = Field(description="3-5套方案，按推荐度排序")
     recommended_index: int = Field(description="最推荐方案的索引（0-based）")
+
+
+_HEX_COLOR_RE = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b")
+_LINEAR_ANGLE_RE = re.compile(r"linear-gradient\(\s*([0-9.]+)deg", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class BackgroundDescriptor:
+    raw: str
+    colors: tuple[tuple[int, int, int], ...]
+    style: str
+    angle: float | None
+    hue: float
+    lightness: float
+    saturation: float
+    tone: str
+    temperature: str
+    valid: bool
+
+
+def _parse_hex_color(value: str) -> tuple[int, int, int] | None:
+    value = value.strip().lstrip("#")
+    if len(value) == 3:
+        value = "".join(ch * 2 for ch in value)
+    if len(value) != 6:
+        return None
+    try:
+        return tuple(int(value[i : i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return None
+
+
+def _extract_hex_colors(value: str) -> tuple[tuple[int, int, int], ...]:
+    colors = []
+    for match in _HEX_COLOR_RE.finditer(value or ""):
+        parsed = _parse_hex_color(match.group(0))
+        if parsed is not None:
+            colors.append(parsed)
+    return tuple(colors)
+
+
+def _background_style(value: str) -> str:
+    lowered = (value or "").strip().lower()
+    if lowered.startswith("linear-gradient"):
+        return "linear"
+    if lowered.startswith("radial-gradient"):
+        return "radial"
+    if "gradient" in lowered:
+        return "other_gradient"
+    return "solid"
+
+
+def _background_angle(value: str) -> float | None:
+    match = _LINEAR_ANGLE_RE.search(value or "")
+    if not match:
+        return None
+    return float(match.group(1))
+
+
+def _average_hls(colors: tuple[tuple[int, int, int], ...]) -> tuple[float, float, float]:
+    if not colors:
+        return 0.0, 0.5, 0.0
+    hues = []
+    lightnesses = []
+    saturations = []
+    for r, g, b in colors:
+        hue, lightness, saturation = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
+        hues.append(hue * 360)
+        lightnesses.append(lightness)
+        saturations.append(saturation)
+    return (
+        sum(hues) / len(hues),
+        sum(lightnesses) / len(lightnesses),
+        sum(saturations) / len(saturations),
+    )
+
+
+def _tone(lightness: float) -> str:
+    if lightness >= 0.68:
+        return "light"
+    if lightness <= 0.35:
+        return "dark"
+    return "mid"
+
+
+def _temperature(hue: float, saturation: float) -> str:
+    if saturation < 0.18:
+        return "neutral"
+    if 20 <= hue <= 75 or hue >= 330:
+        return "warm"
+    return "cool"
+
+
+def _analyze_background(value: str) -> BackgroundDescriptor:
+    raw = value or ""
+    colors = _extract_hex_colors(raw)
+    hue, lightness, saturation = _average_hls(colors)
+    return BackgroundDescriptor(
+        raw=raw,
+        colors=colors,
+        style=_background_style(raw),
+        angle=_background_angle(raw),
+        hue=hue,
+        lightness=lightness,
+        saturation=saturation,
+        tone=_tone(lightness),
+        temperature=_temperature(hue, saturation),
+        valid=bool(colors),
+    )
+
+
+def _hue_distance(a: float, b: float) -> float:
+    diff = abs(a - b) % 360
+    return min(diff, 360 - diff)
+
+
+def _backgrounds_are_similar(first: BackgroundDescriptor, second: BackgroundDescriptor) -> bool:
+    if not first.valid or not second.valid:
+        return False
+    hue_close = _hue_distance(first.hue, second.hue) <= 28
+    lightness_close = abs(first.lightness - second.lightness) <= 0.18
+    saturation_close = abs(first.saturation - second.saturation) <= 0.28
+    same_bucket = first.tone == second.tone and first.temperature == second.temperature
+    same_gradient_family = first.style == second.style or (
+        first.style != "solid" and second.style != "solid"
+    )
+    return same_bucket and same_gradient_family and hue_close and lightness_close and saturation_close
 
 
 SYSTEM_PROMPT = """你是顶尖的视觉设计师，擅长从主题中提取核心意象，转化为精准的配色方案（包含渐变色）。
