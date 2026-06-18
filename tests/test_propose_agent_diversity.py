@@ -1,6 +1,9 @@
 from slideforge.agents.propose_agent import (
+    ColorProposal,
+    DesignProposals,
     _analyze_background,
     _backgrounds_are_similar,
+    diversify_color_proposals,
 )
 
 
@@ -34,3 +37,77 @@ def test_background_similarity_detects_near_duplicate_dark_blue_gradients():
 
     assert _backgrounds_are_similar(first, second) is True
     assert _backgrounds_are_similar(first, third) is False
+
+
+def _proposal(name: str, background: str, visual_style: str = "minimalist") -> ColorProposal:
+    return ColorProposal(
+        name=name,
+        colors={
+            "gradient_bg": background,
+            "primary": "#38bdf8",
+            "accent": "#f97316",
+            "text_primary": "#ffffff",
+        },
+        visual_style=visual_style,
+        reasoning=f"{name} reasoning",
+    )
+
+
+def test_diversify_color_proposals_filters_similar_backgrounds_and_keeps_choices():
+    raw = DesignProposals(
+        proposals=[
+            _proposal("dark blue one", "linear-gradient(135deg, #0f2027 0%, #203a43 100%)"),
+            _proposal("dark blue duplicate", "linear-gradient(140deg, #102331 0%, #24475a 100%)"),
+            _proposal("warm light", "linear-gradient(135deg, #fff7ed 0%, #fb923c 100%)"),
+            _proposal("green radial", "radial-gradient(circle, #064e3b 0%, #22c55e 100%)"),
+        ],
+        recommended_index=0,
+    )
+
+    result = diversify_color_proposals(raw)
+
+    assert [proposal.name for proposal in result.proposals] == [
+        "dark blue one",
+        "warm light",
+        "green radial",
+    ]
+    assert result.recommended_index == 0
+
+
+def test_diversify_color_proposals_prioritizes_coverage_after_recommended_choice():
+    raw = DesignProposals(
+        proposals=[
+            _proposal("another dark cool", "linear-gradient(90deg, #111827 0%, #1e3a8a 100%)"),
+            _proposal("recommended warm", "linear-gradient(135deg, #fff7ed 0%, #fb923c 100%)"),
+            _proposal("light neutral", "#f8fafc"),
+            _proposal("deep green radial", "radial-gradient(circle, #064e3b 0%, #16a34a 100%)"),
+        ],
+        recommended_index=1,
+    )
+
+    result = diversify_color_proposals(raw)
+
+    assert result.proposals[0].name == "recommended warm"
+    assert result.recommended_index == 0
+    assert result.proposals[1].name in {"another dark cool", "deep green radial"}
+    assert {proposal.name for proposal in result.proposals} == {
+        "recommended warm",
+        "another dark cool",
+        "light neutral",
+        "deep green radial",
+    }
+
+
+def test_diversify_color_proposals_preserves_short_or_invalid_sets():
+    raw = DesignProposals(
+        proposals=[
+            _proposal("invalid one", "brand-color(primary)"),
+            _proposal("invalid two", "not-a-css-color"),
+        ],
+        recommended_index=4,
+    )
+
+    result = diversify_color_proposals(raw)
+
+    assert [proposal.name for proposal in result.proposals] == ["invalid one", "invalid two"]
+    assert result.recommended_index == 0

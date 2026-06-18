@@ -197,6 +197,96 @@ def _backgrounds_are_similar(first: BackgroundDescriptor, second: BackgroundDesc
     return same_bucket and same_gradient_family and hue_close and lightness_close and saturation_close
 
 
+def _proposal_background_value(proposal: ColorProposal) -> str:
+    colors = proposal.colors or {}
+    return colors.get("gradient_bg") or colors.get("background") or colors.get("surface") or ""
+
+
+def _clamp_recommended_index(index: int, count: int) -> int:
+    if count <= 0:
+        return 0
+    if index < 0 or index >= count:
+        return 0
+    return index
+
+
+def _coverage_gain(
+    descriptor: BackgroundDescriptor,
+    selected: list[BackgroundDescriptor],
+    duplicate: bool,
+) -> float:
+    if not selected:
+        return 10.0
+    selected_tones = {item.tone for item in selected}
+    selected_temperatures = {item.temperature for item in selected}
+    selected_styles = {item.style for item in selected}
+    score = 0.0
+    if descriptor.tone not in selected_tones:
+        score += 4.0
+    if descriptor.temperature not in selected_temperatures:
+        score += 3.0
+    if descriptor.style not in selected_styles:
+        score += 2.0
+    if descriptor.valid:
+        score += 1.0
+    if duplicate:
+        score -= 100.0
+    return score
+
+
+def diversify_color_proposals(proposals: DesignProposals, min_count: int = 3) -> DesignProposals:
+    proposal_list = list(proposals.proposals or [])
+    if not proposal_list:
+        return proposals
+    if len(proposal_list) <= min_count:
+        return DesignProposals(
+            proposals=proposal_list,
+            recommended_index=_clamp_recommended_index(proposals.recommended_index, len(proposal_list)),
+        )
+
+    recommended_original = _clamp_recommended_index(proposals.recommended_index, len(proposal_list))
+    descriptors = [_analyze_background(_proposal_background_value(proposal)) for proposal in proposal_list]
+
+    selected_indices = [recommended_original]
+    selected_descriptors = [descriptors[recommended_original]]
+    remaining = [idx for idx in range(len(proposal_list)) if idx != recommended_original]
+    rejected_indices = []
+
+    while remaining:
+        ranked = []
+        for idx in remaining:
+            duplicate = any(
+                _backgrounds_are_similar(descriptors[idx], selected)
+                for selected in selected_descriptors
+            )
+            score = _coverage_gain(descriptors[idx], selected_descriptors, duplicate)
+            ranked.append((score, -idx, idx, duplicate))
+        ranked.sort(reverse=True)
+        _, _, best_idx, is_duplicate = ranked[0]
+        remaining.remove(best_idx)
+        if is_duplicate and len(selected_indices) >= min_count:
+            rejected_indices.append(best_idx)
+            rejected_indices.extend(remaining)
+            break
+        selected_indices.append(best_idx)
+        selected_descriptors.append(descriptors[best_idx])
+
+    needed_count = min(min_count, len(proposal_list))
+    for idx in rejected_indices:
+        if len(selected_indices) >= needed_count:
+            break
+        if idx not in selected_indices:
+            selected_indices.append(idx)
+
+    diversified = [proposal_list[idx] for idx in selected_indices]
+    return DesignProposals(
+        proposals=diversified,
+        recommended_index=selected_indices.index(recommended_original)
+        if recommended_original in selected_indices
+        else 0,
+    )
+
+
 SYSTEM_PROMPT = """你是顶尖的视觉设计师，擅长从主题中提取核心意象，转化为精准的配色方案（包含渐变色）。
 
 ## 任务
