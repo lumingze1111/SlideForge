@@ -5,6 +5,7 @@ from slideforge.llm.json_protocol import (
     JsonExtractionError,
     extract_json_text,
     invoke_json_model,
+    invoke_text_model,
 )
 
 
@@ -80,3 +81,12 @@ def test_invoke_json_model_retries_after_invalid_json():
     assert result.attempts == 2
     assert len(llm.calls) == 2
     assert "Return valid JSON." in llm.calls[1][-1]
+
+
+def test_invoke_text_model_returns_content_and_attempt_metadata():
+    llm = FakeLLM(["plain speaker notes"])
+
+    result = invoke_text_model(llm, messages=["prompt"])
+
+    assert result.content == "plain speaker notes"
+    assert result.attempts == 1

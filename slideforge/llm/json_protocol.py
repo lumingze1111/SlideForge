@@ -29,6 +29,12 @@ class JsonModelResult:
     raw_content: str
 
 
+@dataclass(frozen=True)
+class TextModelResult:
+    content: str
+    attempts: int
+
+
 def extract_json_text(content: str) -> str:
     text = (content or "").strip()
     if not text:
@@ -99,3 +105,8 @@ def invoke_json_model(
             ]
 
     raise JsonProtocolError(f"Failed to produce valid {schema.__name__}: {last_error}")
+
+
+def invoke_text_model(llm: Any, messages: list[Any]) -> TextModelResult:
+    response = llm.invoke(messages)
+    return TextModelResult(content=str(getattr(response, "content", response)), attempts=1)
