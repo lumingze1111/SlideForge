@@ -27,3 +27,13 @@ def test_clamp_rect_to_slide_keeps_rect_inside_bounds():
     rect = clamp_rect_to_slide({"x": 1850, "y": -20, "w": 600, "h": 100})
 
     assert rect == {"x": 1320.0, "y": 0.0, "w": 600.0, "h": 100.0}
+
+
+def test_assemble_uses_shared_geometry_constants():
+    from slideforge.pptx_engine import assemble
+
+    assert assemble.SLIDE_W_PX == SLIDE_W_PX
+    assert assemble.SLIDE_H_PX == SLIDE_H_PX
+    assert assemble.SLIDE_W_EMU == SLIDE_W_EMU
+    assert assemble.SLIDE_H_EMU == SLIDE_H_EMU
+    assert assemble.PX_TO_EMU == PX_TO_EMU

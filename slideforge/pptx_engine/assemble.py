@@ -20,18 +20,20 @@ from pptx.dml.color import RGBColor
 from pptx.oxml.ns import qn
 from lxml import etree
 
-SLIDE_W_PX = 1920
-SLIDE_H_PX = 1080
-SLIDE_W_EMU = 12192000      # 13.333"
-SLIDE_H_EMU = 6858000       # 7.5"
-PX_TO_EMU = SLIDE_W_EMU / SLIDE_W_PX  # 6350
 PX_TO_PT = 0.5 * 1.5                    # 0.75 — 字体1.5倍(1920→13.333"空间基值0.5×1.5)
-SIZE_SCALE = 1.5                         # 元素尺寸以中心为基准缩放
 
 from slideforge.pptx_engine.embed_fonts import (
     family_alias_map, weighted_family_map, cjk_typefaces, cjk_for_style, style_of_typeface,
 )
 from slideforge.pptx_engine import css as _css_helpers
+from slideforge.pptx_engine.geometry import (
+    PX_TO_EMU,
+    SIZE_SCALE,
+    SLIDE_H_EMU,
+    SLIDE_H_PX,
+    SLIDE_W_EMU,
+    SLIDE_W_PX,
+)
 from slideforge.pptx_engine.text_utils import is_cjk_text
 
 # 字体映射全部从 embed_fonts.FONT_PLAN 派生：
