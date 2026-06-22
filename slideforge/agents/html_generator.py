@@ -5,11 +5,11 @@ HTML Generator Agent - 根据配色方案和主题生成多页幻灯片 HTML
 集成研究、事实核查和演讲者备注生成。
 """
 
-import json
 from typing import List, Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.language_models import BaseChatModel
 from pydantic import BaseModel, Field
+from slideforge.llm.json_protocol import invoke_json_model
 
 
 class SlideContent(BaseModel):
@@ -98,26 +98,22 @@ def generate_outline(
 
     # 2. 生成大纲
     prompt = OUTLINE_PROMPT.format(topic=topic, audience=audience or "通用受众", pages=pages)
-    response = llm.invoke([
-        SystemMessage(content="You are a presentation writer. Output valid JSON only."),
-        HumanMessage(content=prompt),
-    ])
-    content = response.content
-    if "```json" in content:
-        content = content.split("```json")[1].split("```")[0]
-    elif "```" in content:
-        content = content.split("```")[1].split("```")[0]
-    try:
-        data = json.loads(content.strip())
-    except json.JSONDecodeError:
-        # 尝试从 content 中提取 JSON 对象
-        start = content.find("{")
-        end = content.rfind("}") + 1
-        if start != -1 and end > start:
-            data = json.loads(content[start:end])
-        else:
-            raise
-    outline = PresentationOutline(**data)
+    result = invoke_json_model(
+        llm,
+        messages=[
+            SystemMessage(content="You are a presentation writer. Output valid JSON only."),
+            HumanMessage(content=prompt),
+        ],
+        schema=PresentationOutline,
+        retry_prompt=(
+            "Return only valid JSON matching this shape: "
+            '{"total_pages": number, "slides": [{"slide_type": "cover|section|content|two_column|data|closing", '
+            '"title": "text", "subtitle": "text", "bullets": ["text"], "key_stat": "text", '
+            '"key_stat_label": "text", "notes": "text"}]}'
+        ),
+        max_attempts=2,
+    )
+    outline = result.value
 
     # 3. 事实核查
     if research_facts:
