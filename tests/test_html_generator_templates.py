@@ -1,6 +1,11 @@
 from pathlib import Path
 
-from slideforge.agents.html_generator import PresentationOutline, SlideContent, generate_slides_html
+from slideforge.agents.html_generator import (
+    PresentationOutline,
+    SlideContent,
+    generate_slides_html,
+    generate_slides_html_with_images,
+)
 
 
 COLORS = {
@@ -46,3 +51,36 @@ def test_dense_content_keeps_classic_template(tmp_path):
 
     assert 'data-layout-template="content-classic"' in html
     assert 'data-layout-template="content-insight-cards"' not in html
+
+
+def test_generate_slides_html_with_media_uses_media_templates(tmp_path):
+    class ImageSuggestion:
+        slide_index = 0
+        image_url = str(tmp_path / "missing.jpg")
+        position = "right"
+        description = "missing image"
+
+    class ChartSuggestion:
+        slide_index = 1
+        layout = "fullpage"
+
+    outline = PresentationOutline(
+        total_pages=2,
+        slides=[
+            SlideContent(slide_type="content", title="Visual", bullets=["A", "B"]),
+            SlideContent(slide_type="data", title="Data", key_stat="42%", key_stat_label="Signal", bullets=["A"]),
+        ],
+    )
+
+    path = generate_slides_html_with_images(
+        outline,
+        COLORS,
+        image_suggestions=[ImageSuggestion()],
+        chart_suggestions=[ChartSuggestion()],
+        output_path=str(tmp_path / "slides.html"),
+    )
+    html = Path(path).read_text(encoding="utf-8")
+
+    assert 'data-layout-template="content-right-visual"' in html
+    assert 'data-layout-template="data-chart-forward"' in html
+    assert html.count("data-pptx-slide") == 2
