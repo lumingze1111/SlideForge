@@ -3,10 +3,9 @@ Speaker Notes Generator - 生成演讲者备注
 """
 
 from typing import List
-from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.language_models import BaseChatModel
-import json
+from slideforge.llm.json_protocol import invoke_text_model
 
 
 NOTES_PROMPT = """为幻灯片生成详细的演讲者备注。
@@ -43,9 +42,12 @@ def generate_speaker_notes(
         facts="\n".join(facts[:3])
     )
     
-    response = llm.invoke([
-        SystemMessage(content="You are a professional speech coach. Generate speaker notes in Chinese."),
-        HumanMessage(content=prompt)
-    ])
-    
-    return response.content.strip()
+    result = invoke_text_model(
+        llm,
+        messages=[
+            SystemMessage(content="You are a professional speech coach. Generate speaker notes in Chinese."),
+            HumanMessage(content=prompt),
+        ],
+    )
+
+    return result.content.strip()
