@@ -20,12 +20,15 @@ from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
+from slideforge.pptx_engine.geometry import (
+    SIZE_SCALE,
+    SLIDE_H_PX,
+    SLIDE_W_PX,
+    center_scaled_rect,
+    clamp_rect_to_slide,
+)
 
 logger = logging.getLogger(__name__)
-
-SIZE_SCALE = 1.5
-SLIDE_W_PX = 1920
-SLIDE_H_PX = 1080
 
 SYSTEM_PROMPT = """你是专业幻灯片布局设计师，负责在 1.5× 缩放后调整元素位置。
 
@@ -59,13 +62,7 @@ SYSTEM_PROMPT = """你是专业幻灯片布局设计师，负责在 1.5× 缩放
 
 def _calc_init_rect(rx: float, ry: float, rw: float, rh: float) -> dict:
     """计算中心缩放 1.5× 后的初始 rect（与 assemble.py _scaled_rect 逻辑一致）。"""
-    offset = (SIZE_SCALE - 1.0) / 2.0  # 0.25
-    return {
-        "x": round(rx - rw * offset, 1),
-        "y": round(ry - rh * offset, 1),
-        "w": round(rw * SIZE_SCALE, 1),
-        "h": round(rh * SIZE_SCALE, 1),
-    }
+    return center_scaled_rect(rx, ry, rw, rh, scale=SIZE_SCALE)
 
 
 def _truncate(text: str, max_len: int = 40) -> str:
