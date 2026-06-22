@@ -11,6 +11,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.language_models import BaseChatModel
 from pydantic import BaseModel, Field
 
+from slideforge.agents.layout_templates import TemplateContext, select_layout_template
+
 
 class SlideContent(BaseModel):
     """单页幻灯片内容"""
@@ -150,8 +152,50 @@ def generate_outline(
     return outline
 
 
-def render_slide_html(slide: SlideContent, colors: dict, index: int, total: int) -> str:
+def _slide_root(template_name: str) -> str:
+    return f'<div class="slide" data-layout-template="{template_name}"'
+
+
+def _select_template_name(
+    slide: SlideContent,
+    index: int,
+    total: int,
+    has_image: bool = False,
+    has_chart: bool = False,
+    theme_family: str = "",
+) -> str:
+    template = select_layout_template(
+        TemplateContext(
+            slide_type=slide.slide_type,
+            slide_index=index,
+            total_slides=total,
+            bullet_count=len(slide.bullets),
+            title_length=len(slide.title or ""),
+            has_image=has_image,
+            has_chart=has_chart,
+            theme_family=theme_family,
+        )
+    )
+    return template.name
+
+
+def _bullet_items(bullets: list[str], color: str, accent: str, font_size: int = 18) -> str:
+    return "".join(
+        f'<li style="margin-bottom:14px;padding-left:24px;position:relative;font-size:{font_size}px;color:{color};line-height:1.5;">'
+        f'<span style="position:absolute;left:0;color:{accent};font-weight:700;">▸</span>{bullet}</li>'
+        for bullet in bullets
+    )
+
+
+def render_slide_html(
+    slide: SlideContent,
+    colors: dict,
+    index: int,
+    total: int,
+    template_name: str | None = None,
+) -> str:
     """将单页幻灯片内容渲染为 HTML"""
+    template_name = template_name or _select_template_name(slide, index, total)
     bg = colors.get("gradient_bg", colors.get("background", "#1a1a2e"))
     primary = colors.get("primary", "#7c3aed")
     accent = colors.get("accent", "#f59e0b")
@@ -179,7 +223,30 @@ def render_slide_html(slide: SlideContent, colors: dict, index: int, total: int)
     page_num = f'<div style="position:absolute;bottom:24px;right:40px;font-size:13px;color:{text_secondary};opacity:0.6;">{index}/{total}</div>'
 
     if slide.slide_type == "cover":
-        return f"""<div class="slide" style="{bg_css} color:{text_primary}; position:relative;">
+        if template_name == "cover-split-hero":
+            return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
+  <div style="height:100%;display:grid;grid-template-columns:42% 1fr;">
+    <div style="background:{accent};opacity:0.95;display:flex;align-items:flex-end;padding:60px;">
+      <div style="font-size:18px;font-weight:700;color:{bg};letter-spacing:3px;">SLIDEFORGE</div>
+    </div>
+    <div style="display:flex;flex-direction:column;justify-content:center;padding:70px 90px;">
+      <h1 style="font-size:54px;font-weight:800;line-height:1.12;margin-bottom:26px;{title_color_css}">{slide.title}</h1>
+      <p style="font-size:22px;color:{text_secondary};line-height:1.6;max-width:620px;">{slide.subtitle}</p>
+    </div>
+  </div>
+  {page_num}
+</div>"""
+        if template_name == "cover-background-hero":
+            return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
+  <div style="position:absolute;inset:0;background:radial-gradient(circle at 28% 32%, {accent}55, transparent 28%), radial-gradient(circle at 80% 68%, {primary}44, transparent 30%);"></div>
+  <div style="position:relative;z-index:1;height:100%;display:flex;flex-direction:column;justify-content:center;padding:64px 110px;">
+    <div style="width:110px;height:6px;background:{accent};border-radius:3px;margin-bottom:42px;"></div>
+    <h1 style="font-size:60px;font-weight:850;line-height:1.08;margin-bottom:24px;max-width:820px;{title_color_css}">{slide.title}</h1>
+    <p style="font-size:22px;color:{text_secondary};line-height:1.6;max-width:720px;">{slide.subtitle}</p>
+  </div>
+  {page_num}
+</div>"""
+        return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
   <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;text-align:center;padding:60px 120px;">
     <div style="width:80px;height:5px;background:{accent};margin-bottom:48px;border-radius:3px;"></div>
     <h1 style="font-size:56px;font-weight:800;line-height:1.2;margin-bottom:28px;{title_color_css}">{slide.title}</h1>
@@ -190,7 +257,27 @@ def render_slide_html(slide: SlideContent, colors: dict, index: int, total: int)
 </div>"""
 
     if slide.slide_type == "section":
-        return f"""<div class="slide" style="{bg_css} color:{text_primary}; position:relative;">
+        if template_name == "section-centered":
+            return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
+  <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:70px 140px;">
+    <div style="font-size:15px;color:{accent};letter-spacing:4px;margin-bottom:22px;">SECTION {index:02d}</div>
+    <h2 style="font-size:52px;font-weight:760;line-height:1.15;margin-bottom:20px;{title_color_css}">{slide.title}</h2>
+    <p style="font-size:21px;color:{text_secondary};line-height:1.6;max-width:720px;">{slide.subtitle}</p>
+  </div>
+  {page_num}
+</div>"""
+        if template_name == "section-numeral":
+            return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
+  <div style="position:absolute;right:70px;top:34px;font-size:180px;line-height:1;font-weight:900;color:{surface};opacity:0.65;">{index:02d}</div>
+  <div style="position:relative;z-index:1;display:flex;flex-direction:column;justify-content:center;height:100%;padding:70px 110px;">
+    <div style="width:72px;height:5px;background:{accent};margin-bottom:34px;border-radius:3px;"></div>
+    <h2 style="font-size:50px;font-weight:780;margin-bottom:20px;max-width:760px;{title_color_css}">{slide.title}</h2>
+    <p style="font-size:21px;color:{text_secondary};max-width:680px;line-height:1.6;">{slide.subtitle}</p>
+  </div>
+  {page_num}
+</div>"""
+        return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
+  <div style="position:absolute;left:0;top:0;bottom:0;width:28px;background:{accent};"></div>
   <div style="display:flex;flex-direction:column;justify-content:center;height:100%;padding:60px 100px;">
     <div style="width:60px;height:4px;background:{accent};margin-bottom:32px;border-radius:2px;"></div>
     <h2 style="font-size:48px;font-weight:700;margin-bottom:20px;{title_color_css}">{slide.title}</h2>
@@ -200,12 +287,45 @@ def render_slide_html(slide: SlideContent, colors: dict, index: int, total: int)
 </div>"""
 
     if slide.slide_type == "data":
-        bullets_html = "".join(
-            f'<li style="margin-bottom:12px;padding-left:20px;position:relative;font-size:16px;color:{text_secondary};">'
-            f'<span style="position:absolute;left:0;color:{accent};">▸</span>{b}</li>'
-            for b in slide.bullets
-        )
-        return f"""<div class="slide" style="{bg_css} color:{text_primary}; position:relative;">
+        bullets_html = _bullet_items(slide.bullets, text_secondary, accent, font_size=16)
+        if template_name == "data-chart-forward":
+            return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
+  <div style="padding:46px 76px 0 76px;">
+    <h2 style="font-size:34px;font-weight:720;margin-bottom:8px;{title_color_css}">{slide.title}</h2>
+    <div style="width:74px;height:3px;background:{accent};margin-bottom:28px;"></div>
+  </div>
+  <div style="padding:0 76px;display:grid;grid-template-columns:1.25fr .75fr;gap:34px;align-items:stretch;">
+    <div style="min-height:420px;background:{surface};border-radius:14px;border:1px solid {border};display:flex;align-items:center;justify-content:center;">
+      <div style="font-size:18px;color:{text_secondary};">Chart Area</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:18px;">
+      <div style="background:{accent};border-radius:14px;padding:28px;color:{bg};">
+        <div style="font-size:56px;font-weight:850;line-height:1;">{slide.key_stat}</div>
+        <div style="font-size:15px;margin-top:8px;">{slide.key_stat_label}</div>
+      </div>
+      <ul style="list-style:none;padding:0;margin:0;">{bullets_html}</ul>
+    </div>
+  </div>
+  {page_num}
+</div>"""
+        if template_name == "data-kpi-strip":
+            kpis = (slide.bullets or [slide.key_stat_label])[:3]
+            kpi_html = "".join(
+                f'<div style="background:{surface};border:1px solid {border};border-radius:12px;padding:22px;">'
+                f'<div style="font-size:13px;color:{text_secondary};margin-bottom:10px;">KPI</div>'
+                f'<div style="font-size:20px;color:{text_primary};font-weight:700;line-height:1.35;">{item}</div></div>'
+                for item in kpis
+            )
+            return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
+  <div style="padding:48px 76px 0 76px;">
+    <h2 style="font-size:36px;font-weight:740;margin-bottom:12px;{title_color_css}">{slide.title}</h2>
+    <div style="font-size:80px;font-weight:900;color:{accent};line-height:1;margin-bottom:30px;">{slide.key_stat}</div>
+    <div style="font-size:18px;color:{text_secondary};margin-bottom:28px;">{slide.key_stat_label}</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;">{kpi_html}</div>
+  </div>
+  {page_num}
+</div>"""
+        return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
   <div style="padding:50px 80px 0 80px;">
     <h2 style="font-size:36px;font-weight:700;margin-bottom:8px;{title_color_css}">{slide.title}</h2>
     <div style="width:80px;height:3px;background:{accent};margin-bottom:32px;"></div>
@@ -226,17 +346,40 @@ def render_slide_html(slide: SlideContent, colors: dict, index: int, total: int)
         mid = len(slide.bullets) // 2
         left_bullets = slide.bullets[:mid] if slide.bullets else []
         right_bullets = slide.bullets[mid:] if slide.bullets else []
-        left_html = "".join(
-            f'<li style="margin-bottom:14px;padding-left:20px;position:relative;font-size:17px;color:{text_secondary};">'
-            f'<span style="position:absolute;left:0;color:{accent};">▸</span>{b}</li>'
-            for b in left_bullets
-        )
-        right_html = "".join(
-            f'<li style="margin-bottom:14px;padding-left:20px;position:relative;font-size:17px;color:{text_secondary};">'
-            f'<span style="position:absolute;left:0;color:{accent};">▸</span>{b}</li>'
-            for b in right_bullets
-        )
-        return f"""<div class="slide" style="{bg_css} color:{text_primary}; position:relative;">
+        left_html = _bullet_items(left_bullets, text_secondary, accent, font_size=17)
+        right_html = _bullet_items(right_bullets, text_secondary, accent, font_size=17)
+        if template_name == "two-column-pro-con":
+            return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
+  <div style="padding:48px 78px 0 78px;">
+    <h2 style="font-size:36px;font-weight:730;margin-bottom:26px;{title_color_css}">{slide.title}</h2>
+  </div>
+  <div style="padding:0 78px;display:grid;grid-template-columns:1fr 1fr;gap:28px;">
+    <div style="border-top:6px solid {accent};background:{surface};border-radius:10px;padding:30px;border-left:1px solid {border};border-right:1px solid {border};border-bottom:1px solid {border};">
+      <div style="font-size:15px;font-weight:800;color:{accent};margin-bottom:18px;">OPTION A</div>
+      <ul style="list-style:none;padding:0;">{left_html}</ul>
+    </div>
+    <div style="border-top:6px solid {primary};background:{surface};border-radius:10px;padding:30px;border-left:1px solid {border};border-right:1px solid {border};border-bottom:1px solid {border};">
+      <div style="font-size:15px;font-weight:800;color:{heading_color};margin-bottom:18px;">OPTION B</div>
+      <ul style="list-style:none;padding:0;">{right_html}</ul>
+    </div>
+  </div>
+  {page_num}
+</div>"""
+        if template_name == "two-column-asymmetric":
+            return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
+  <div style="height:100%;display:grid;grid-template-columns:38% 1fr;">
+    <div style="background:{surface};border-right:1px solid {border};padding:58px 48px;display:flex;flex-direction:column;justify-content:center;">
+      <div style="width:58px;height:4px;background:{accent};margin-bottom:26px;"></div>
+      <h2 style="font-size:38px;font-weight:760;line-height:1.2;{title_color_css}">{slide.title}</h2>
+    </div>
+    <div style="padding:74px 70px;display:grid;grid-template-columns:1fr 1fr;gap:26px;align-content:center;">
+      <ul style="list-style:none;padding:0;">{left_html}</ul>
+      <ul style="list-style:none;padding:0;">{right_html}</ul>
+    </div>
+  </div>
+  {page_num}
+</div>"""
+        return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
   <div style="padding:50px 80px 0 80px;">
     <h2 style="font-size:36px;font-weight:700;margin-bottom:8px;{title_color_css}">{slide.title}</h2>
     <div style="width:80px;height:3px;background:{accent};margin-bottom:32px;"></div>
@@ -253,7 +396,31 @@ def render_slide_html(slide: SlideContent, colors: dict, index: int, total: int)
 </div>"""
 
     if slide.slide_type == "closing":
-        return f"""<div class="slide" style="{bg_css} color:{text_primary}; position:relative;">
+        if template_name == "closing-action-list":
+            bullets = slide.bullets or [slide.subtitle]
+            action_html = _bullet_items([item for item in bullets if item], text_secondary, accent, font_size=18)
+            return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
+  <div style="height:100%;display:grid;grid-template-columns:46% 1fr;">
+    <div style="display:flex;flex-direction:column;justify-content:center;padding:70px 64px;">
+      <div style="font-size:16px;color:{accent};letter-spacing:4px;margin-bottom:22px;font-weight:700;">NEXT STEPS</div>
+      <h2 style="font-size:46px;font-weight:800;line-height:1.16;{title_color_css}">{slide.title}</h2>
+    </div>
+    <div style="display:flex;align-items:center;padding:80px 86px 80px 20px;">
+      <ul style="list-style:none;padding:0;width:100%;">{action_html}</ul>
+    </div>
+  </div>
+  {page_num}
+</div>"""
+        if template_name == "closing-quote":
+            return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
+  <div style="height:100%;display:flex;flex-direction:column;justify-content:center;padding:76px 130px;">
+    <div style="font-size:96px;color:{accent};line-height:0.8;margin-bottom:14px;">“</div>
+    <h2 style="font-size:48px;font-weight:760;line-height:1.18;margin-bottom:24px;{title_color_css}">{slide.title}</h2>
+    <p style="font-size:22px;color:{text_secondary};line-height:1.65;max-width:780px;">{slide.subtitle}</p>
+  </div>
+  {page_num}
+</div>"""
+        return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
   <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;text-align:center;padding:60px 120px;">
     <div style="font-size:18px;color:{accent};letter-spacing:4px;margin-bottom:24px;font-weight:600;">CONCLUSION</div>
     <h2 style="font-size:48px;font-weight:700;margin-bottom:24px;{title_color_css}">{slide.title}</h2>
@@ -264,12 +431,48 @@ def render_slide_html(slide: SlideContent, colors: dict, index: int, total: int)
 </div>"""
 
     # default: content page
-    bullets_html = "".join(
-        f'<li style="margin-bottom:18px;padding-left:24px;position:relative;font-size:18px;color:{text_secondary};line-height:1.5;">'
-        f'<span style="position:absolute;left:0;color:{accent};font-weight:700;">▸</span>{b}</li>'
-        for b in slide.bullets
-    )
-    return f"""<div class="slide" style="{bg_css} color:{text_primary}; position:relative;">
+    bullets_html = _bullet_items(slide.bullets, text_secondary, accent, font_size=18)
+    if template_name == "content-insight-cards":
+        card_html = "".join(
+            f'<div style="background:{surface};border:1px solid {border};border-radius:10px;padding:22px;min-height:128px;">'
+            f'<div style="width:34px;height:3px;background:{accent};margin-bottom:16px;"></div>'
+            f'<div style="font-size:18px;color:{text_primary};font-weight:650;line-height:1.45;">{bullet}</div></div>'
+            for bullet in slide.bullets[:4]
+        )
+        return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
+  <div style="padding:46px 78px 0 78px;">
+    <h2 style="font-size:36px;font-weight:740;margin-bottom:8px;{title_color_css}">{slide.title}</h2>
+    <div style="width:74px;height:3px;background:{accent};margin-bottom:30px;"></div>
+  </div>
+  <div style="padding:0 78px;display:grid;grid-template-columns:1fr 1fr;gap:18px;">{card_html}</div>
+  {page_num}
+</div>"""
+    if template_name == "content-left-rail":
+        return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
+  <div style="height:100%;display:grid;grid-template-columns:30% 1fr;">
+    <div style="background:{surface};border-right:1px solid {border};padding:58px 42px;display:flex;flex-direction:column;justify-content:space-between;">
+      <div style="font-size:15px;color:{accent};letter-spacing:3px;font-weight:800;">INSIGHT {index:02d}</div>
+      <h2 style="font-size:34px;font-weight:780;line-height:1.18;{title_color_css}">{slide.title}</h2>
+    </div>
+    <div style="padding:86px 82px;display:flex;align-items:center;">
+      <ul style="list-style:none;padding:0;width:100%;">{bullets_html}</ul>
+    </div>
+  </div>
+  {page_num}
+</div>"""
+    if template_name == "content-right-visual":
+        return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
+  <div style="padding:50px 560px 0 78px;">
+    <h2 style="font-size:36px;font-weight:740;margin-bottom:10px;{title_color_css}">{slide.title}</h2>
+    <div style="width:74px;height:3px;background:{accent};margin-bottom:34px;"></div>
+  </div>
+  <div style="padding:0 560px 0 78px;">
+    <ul style="list-style:none;padding:0;">{bullets_html}</ul>
+  </div>
+  <div style="position:absolute;right:78px;top:118px;width:420px;height:470px;background:{surface};border:1px solid {border};border-radius:14px;display:flex;align-items:center;justify-content:center;color:{text_secondary};font-size:16px;">Visual Area</div>
+  {page_num}
+</div>"""
+    return f"""{_slide_root(template_name)} style="{bg_css} color:{text_primary}; position:relative;">
   <div style="padding:50px 80px 0 80px;">
     <h2 style="font-size:38px;font-weight:700;margin-bottom:10px;{title_color_css}">{slide.title}</h2>
     <div style="width:80px;height:3px;background:{accent};margin-bottom:36px;"></div>
@@ -292,7 +495,8 @@ def generate_slides_html(
     # 渲染幻灯片（添加 data-pptx-slide 和 data-notes 供 PPTX 转换引擎使用）
     slides_parts = []
     for i, s in enumerate(outline.slides):
-        slide_html = render_slide_html(s, colors, i + 1, total)
+        template_name = _select_template_name(s, i + 1, total)
+        slide_html = render_slide_html(s, colors, i + 1, total, template_name=template_name)
         # 在 class="slide" 后添加 data-pptx-slide
         slide_html = slide_html.replace('<div class="slide"', '<div class="slide" data-pptx-slide', 1)
         # 添加演讲者备注
@@ -392,7 +596,14 @@ def generate_slides_html_with_images(
         )
 
         # 渲染幻灯片内容（可能压缩宽度）
-        slide_html = render_slide_html(s, colors, i + 1, total)
+        template_name = _select_template_name(
+            s,
+            i + 1,
+            total,
+            has_image=has_image,
+            has_chart=has_chart,
+        )
+        slide_html = render_slide_html(s, colors, i + 1, total, template_name=template_name)
         if layout.content_width_pct < 0.95:
             slide_html = _adjust_content_width(slide_html, layout.content_width_pct)
 
