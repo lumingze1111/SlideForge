@@ -9,6 +9,15 @@ from slideforge.tools.image_search import (
     ImageSearchError,
     get_image_search_tool
 )
+from slideforge.tools.image_matching import (
+    ImageQueryContext,
+    SelectedImage,
+    build_image_query_context,
+    build_image_queries,
+    choose_best_image,
+    score_image_candidate,
+    search_best_image,
+)
 from slideforge.tools.data_fetch import (
     web_search,
     wikipedia_fetch,
@@ -34,6 +43,13 @@ __all__ = [
     "ImageSource",
     "ImageSearchError",
     "get_image_search_tool",
+    "ImageQueryContext",
+    "SelectedImage",
+    "build_image_query_context",
+    "build_image_queries",
+    "choose_best_image",
+    "score_image_candidate",
+    "search_best_image",
     # Data fetch
     "web_search",
     "wikipedia_fetch",

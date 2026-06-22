@@ -134,7 +134,7 @@ def main() -> None:
                 enable_images=enable_images,
                 enable_charts=enable_charts
             )
-            enhanced_outline = enhancement_agent.enhance_outline(outline, chosen_color)
+            enhanced_outline = enhancement_agent.enhance_outline(outline, chosen_color, topic=topic)
 
             summary = []
             if enhanced_outline.images:

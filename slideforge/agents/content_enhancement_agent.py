@@ -4,7 +4,6 @@ Content Enhancement Agent (完整版) - 支持图片、数据和图表
 
 from typing import Dict, Any, List, Optional
 from pathlib import Path
-import uuid
 import json
 
 from pydantic import BaseModel
@@ -17,6 +16,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from slideforge.agents.html_generator import PresentationOutline, SlideContent
 from slideforge.agents.propose_agent import ColorProposal
 from slideforge.tools.image_search import get_image_search_tool, ImageSearchError, ImageSource
+from slideforge.tools.image_matching import ImageQueryContext, build_image_query_context, search_best_image
 from slideforge.tools.data_fetch import web_search, wikipedia_fetch, web_scrape, DataFetchError
 from slideforge.tools.chart_generator import (
     get_chart_generator,
@@ -96,27 +96,38 @@ class ContentEnhancementAgent:
                 return {"success": False, "message": "Image search is disabled"}
 
             try:
-                results = self.image_search_tool_instance.search(
-                    query=keywords,
-                    limit=1,
-                    preferred_source=ImageSource.UNSPLASH
+                context = getattr(self, "_current_image_context", None)
+                if context is None:
+                    context = build_image_query_context(
+                        topic=keywords,
+                        slide_index=0,
+                        slide=SlideContent(slide_type="content", title=keywords),
+                        requested_keywords=keywords,
+                    )
+                else:
+                    context = ImageQueryContext(
+                        topic=context.topic,
+                        slide_index=context.slide_index,
+                        slide_type=context.slide_type,
+                        slide_title=context.slide_title,
+                        slide_text=context.slide_text,
+                        requested_keywords=keywords,
+                    )
+
+                selected = search_best_image(
+                    image_tool=self.image_search_tool_instance,
+                    context=context,
+                    output_dir=self.output_dir,
+                    preferred_source=ImageSource.UNSPLASH,
                 )
 
-                if not results:
-                    return {"success": False, "message": "No images found"}
+                if selected is None:
+                    return {"success": False, "message": "No relevant images found"}
 
-                image = results[0]
-                image_filename = f"image_{uuid.uuid4().hex[:8]}.jpg"
-                image_path = self.output_dir / image_filename
-
-                try:
-                    self.image_search_tool_instance.download_image(image, str(image_path))
-                except Exception as e:
-                    return {"success": False, "message": f"Failed to download: {e}"}
-
+                image = selected.image
                 return {
                     "success": True,
-                    "image_url": str(image_path),
+                    "image_url": str(selected.image_path),
                     "description": image.description,
                     "position": position,
                     "size": (size_width, size_height),
@@ -260,13 +271,20 @@ class ContentEnhancementAgent:
     def enhance_outline(
         self,
         outline: PresentationOutline,
-        colors: ColorProposal
+        colors: ColorProposal,
+        topic: str = "",
     ) -> EnhancedOutline:
         """增强大纲"""
         enhanced = EnhancedOutline(slides=outline.slides, images=[], charts=[])
 
         for slide_index, slide in enumerate(outline.slides):
             try:
+                self._current_image_context = build_image_query_context(
+                    topic=topic or slide.title,
+                    slide_index=slide_index,
+                    slide=slide,
+                )
+
                 system_prompt = f"""你是一个幻灯片内容增强助手。分析当前幻灯片，决定需要添加什么内容。
 
 当前幻灯片信息：
