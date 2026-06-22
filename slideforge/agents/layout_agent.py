@@ -27,6 +27,11 @@ from slideforge.pptx_engine.geometry import (
     center_scaled_rect,
     clamp_rect_to_slide,
 )
+from slideforge.pptx_engine.records import (
+    build_layout_element,
+    is_fullscreen_deco as _is_fullscreen_deco,
+    truncate_text as _truncate_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,19 +72,12 @@ def _calc_init_rect(rx: float, ry: float, rw: float, rh: float) -> dict:
 
 def _truncate(text: str, max_len: int = 40) -> str:
     """截断文本到 max_len + "…"。"""
-    if not text:
-        return ""
-    if len(text) <= max_len:
-        return text
-    return text[:max_len] + "…"
+    return _truncate_text(text, max_len=max_len)
 
 
 def is_fullscreen_deco(rec: dict) -> bool:
     """判断是否全屏 deco_snapshot（应跳过）。"""
-    if rec.get("kind") != "deco_snapshot":
-        return False
-    r = rec.get("rect", {})
-    return r.get("w", 0) >= SLIDE_W_PX * 0.99 and r.get("h", 0) >= SLIDE_H_PX * 0.99
+    return _is_fullscreen_deco(rec)
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
@@ -117,24 +115,7 @@ def _build_element_list(records: list[dict], slide_w: int, slide_h: int) -> list
     for rec in records:
         if is_fullscreen_deco(rec):
             continue
-        r = rec.get("rect", {})
-        init_rect = _calc_init_rect(r.get("x", 0), r.get("y", 0),
-                                     r.get("w", 0), r.get("h", 0))
-        el = {
-            "id": str(rec.get("id", "")),
-            "kind": rec.get("kind", ""),
-            "tag": rec.get("tag", ""),
-        }
-        text = rec.get("text", "")
-        if text:
-            el["text"] = _truncate(text)
-        fs = rec.get("fontSize", 0)
-        if fs:
-            el["fontSize"] = fs
-        el["orig"] = {"x": r.get("x", 0), "y": r.get("y", 0),
-                       "w": r.get("w", 0), "h": r.get("h", 0)}
-        el["init"] = init_rect
-        elements.append(el)
+        elements.append(build_layout_element(rec))
     return elements
 
 
