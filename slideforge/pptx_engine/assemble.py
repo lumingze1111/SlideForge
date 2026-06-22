@@ -31,6 +31,7 @@ SIZE_SCALE = 1.5                         # 元素尺寸以中心为基准缩放
 from slideforge.pptx_engine.embed_fonts import (
     family_alias_map, weighted_family_map, cjk_typefaces, cjk_for_style, style_of_typeface,
 )
+from slideforge.pptx_engine import css as _css_helpers
 from slideforge.pptx_engine.text_utils import is_cjk_text
 
 # 字体映射全部从 embed_fonts.FONT_PLAN 派生：
@@ -51,6 +52,7 @@ def refresh_font_plan_caches():
     WEIGHTED_FONT_FALLBACKS = weighted_family_map()
     CJK_FONTS = cjk_typefaces()
     _CJK_ALIAS_SET = {name.lower() for name, tf in FONT_FALLBACKS.items() if tf in CJK_FONTS}
+    _css_helpers.refresh_font_plan_caches()
 
 
 # import 时跑一次（FONT_PLAN 可能此时已被预填，例如 embed CLI 单独跑）
@@ -219,6 +221,15 @@ def first_font(font_family: str) -> str:
             return FONT_FALLBACKS[it.lower()]
         return it  # 用户用了我们没装的字体，原名透传（运行时回退到系统）
     return items[0] if items else DEFAULT_LATIN_FALLBACK
+
+
+GENERIC_FONT_KEYWORDS = _css_helpers.GENERIC_FONT_KEYWORDS
+DEFAULT_LATIN_FALLBACK = _css_helpers.DEFAULT_LATIN_FALLBACK
+parse_text_shadow = _css_helpers.parse_text_shadow
+parse_rgb = _css_helpers.parse_rgb
+_parse_css_alpha = _css_helpers.parse_css_alpha
+parse_rgba = _css_helpers.parse_rgba
+first_font = _css_helpers.first_font
 
 
 def _normalize_weight_value(weight) -> int:
