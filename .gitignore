@@ -49,3 +49,6 @@ slideforge_outline_preview.html
 
 # Claude Code brainstorming sessions
 .superpowers/
+
+# Local git worktrees
+.worktrees/
