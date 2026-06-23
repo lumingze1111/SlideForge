@@ -91,3 +91,39 @@ def test_plain_html_dependency_accepts_template_family(monkeypatch, tmp_path):
 
     assert calls["theme_family"] == "technical"
     assert output_path.exists()
+
+
+def test_convert_fallback_uses_screenshot_mode(monkeypatch, tmp_path):
+    calls = {}
+
+    class FakeResult:
+        returncode = 1
+
+    def fake_run(args, capture_output, text):
+        calls["llm_args"] = args
+        return FakeResult()
+
+    def fake_convert(html_path, pptx_path, **kwargs):
+        calls["fallback"] = {
+            "html_path": html_path,
+            "pptx_path": pptx_path,
+            "kwargs": kwargs,
+        }
+        Path(pptx_path).write_bytes(b"pptx")
+
+    monkeypatch.setattr(main.subprocess, "run", fake_run)
+    monkeypatch.setattr("slideforge.pptx_converter.convert_html_to_pptx", fake_convert)
+    monkeypatch.setattr(main, "_open_file", lambda path: None)
+
+    html_path = tmp_path / "slides.html"
+    pptx_path = tmp_path / "slides.pptx"
+    html_path.write_text("<html></html>", encoding="utf-8")
+
+    deps = main._create_dependencies(error_tracker=object())
+    result = deps.convert_html_to_pptx(str(html_path), str(pptx_path))
+
+    assert result == 1
+    assert calls["fallback"]["html_path"] == str(html_path)
+    assert calls["fallback"]["pptx_path"] == str(pptx_path)
+    assert calls["fallback"]["kwargs"]["screenshot_mode"] is True
+    assert calls["fallback"]["kwargs"]["validate_gradients"] is False

@@ -126,10 +126,16 @@ def _create_dependencies(error_tracker: ErrorTracker) -> GenerationDependencies:
             text=True,
         )
         if result.returncode != 0:
-            print(f"  ⚠ LLM 直接渲染失败 (exit {result.returncode})，回退到传统流水线...")
+            print(f"  ⚠ LLM 直接渲染失败 (exit {result.returncode})，回退到截图高保真流水线...")
             from slideforge.pptx_converter import convert_html_to_pptx
 
-            convert_html_to_pptx(html_path, pptx_path, verbose=True)
+            convert_html_to_pptx(
+                html_path,
+                pptx_path,
+                verbose=True,
+                screenshot_mode=True,
+                validate_gradients=False,
+            )
         print(f"  ✓ PPTX 已生成：{pptx_path}")
         _open_file(Path(pptx_path))
         return result.returncode
