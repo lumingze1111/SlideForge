@@ -1,9 +1,10 @@
 """Tests for Layout Agent integration in assemble.py."""
 
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
+from slideforge.pptx_engine import assemble as assemble_module
 from slideforge.pptx_engine.assemble import _resolve_rect, _scaled_rect, px_to_emu
 
 
@@ -80,3 +81,36 @@ class TestResolveRect:
         # Should use adjusted_rect, NOT the fallback
         assert w == int(500 * 6350 * 1.5)
         assert h == int(80 * 6350 * 1.5)
+
+
+def test_screenshot_mode_does_not_overlay_visible_text(monkeypatch):
+    slide = Mock()
+    data = {
+        "slide": {
+            "screenshot": "/tmp/slide.png",
+            "background": "rgb(0, 0, 0)",
+            "backgroundImage": "none",
+        },
+        "records": [
+            {
+                "kind": "text",
+                "rect": {"x": 10, "y": 20, "w": 300, "h": 80},
+                "text": "already captured in screenshot",
+                "style": {},
+                "runs": [],
+            }
+        ],
+    }
+
+    add_background = Mock()
+    add_text_box = Mock()
+    monkeypatch.setattr(assemble_module, "add_background", add_background)
+    monkeypatch.setattr(assemble_module, "add_text_box", add_text_box)
+    prepare_text_layouts = Mock()
+    monkeypatch.setattr(assemble_module, "_prepare_text_layouts", prepare_text_layouts)
+
+    assemble_module.assemble_slide(slide, data, screenshot_mode=True)
+
+    add_background.assert_called_once()
+    prepare_text_layouts.assert_not_called()
+    add_text_box.assert_not_called()

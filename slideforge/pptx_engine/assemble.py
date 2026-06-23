@@ -1413,11 +1413,15 @@ def add_deco_snapshot(slide, rec):
 
 def assemble_slide(slide, data, slide_index: int = 0, total_slides: int = 1,
                    screenshot_mode: bool = False):
-    """装配一张 slide。screenshot_mode=True 时用截图背景 + 仅渲染文本。"""
+    """装配一张 slide。screenshot_mode=True 时用完整截图保证视觉一致。"""
     screenshot_path = data["slide"].get("screenshot") if screenshot_mode else None
     bg_rgb = parse_rgb(data["slide"]["background"])
     bg_image = data["slide"].get("backgroundImage", "")
     add_background(slide, bg_rgb, bg_image, screenshot_path, screenshot_mode)
+    if screenshot_mode:
+        # 截图已经包含文字、图片、图表和装饰。再叠加可见文本会造成重影和位置偏差。
+        return
+
     has_native_gradient = bool(
         bg_image and bg_image != "none" and "gradient" in bg_image.lower()
     )
@@ -1445,24 +1449,6 @@ def assemble_slide(slide, data, slide_index: int = 0, total_slides: int = 1,
         traceback.print_exc()
 
     # ── 渲染 ─────────────────────────────────────────────────────────
-    if screenshot_mode:
-        # 截图模式：只渲染文字，跳过所有其他类型（截图已捕获视觉外观）
-        for rec in data["records"]:
-            if rec["kind"] == "text":
-                # 清空 deco：截图已包含背景/边框/装饰，文字需透明叠层
-                rec["deco"] = {
-                    "hasBg": False, "bg": "rgba(0, 0, 0, 0)",
-                    "borderTop": False, "borderBottom": False,
-                    "borderLeft": False, "borderRight": False,
-                    "borderColor": "", "borderTopColor": "", "borderBottomColor": "",
-                    "borderLeftColor": "", "borderRightColor": "",
-                    "borderTopWidth": 0, "borderBottomWidth": 0,
-                    "borderLeftWidth": 0, "borderRightWidth": 0,
-                    "borderRadius": "",
-                }
-                add_text_box(slide, rec)
-        return
-
     # 传统模式：逐元素渲染
     text_records = []
     for rec in data["records"]:

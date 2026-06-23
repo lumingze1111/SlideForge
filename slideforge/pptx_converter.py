@@ -38,7 +38,7 @@ def convert_html_to_pptx(
         verbose: 是否打印详细日志。
         validate_gradients: 装配后校验渐变是否与 HTML 匹配，不匹配则直接修补 PPTX。
         max_validate_attempts: 渐变校验循环最大尝试次数。
-        screenshot_mode: 截图模式 —— 整页截图作背景，仅渲染透明文字叠层。
+        screenshot_mode: 截图模式 —— 整页截图作背景，优先保证与 HTML 视觉一致。
 
     Returns:
         输出 .pptx 的绝对路径。
