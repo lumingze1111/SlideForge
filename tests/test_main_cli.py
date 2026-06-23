@@ -41,3 +41,53 @@ def test_main_delegates_to_generation_pipeline(monkeypatch, tmp_path):
     assert calls["ideas"] == "测试想法"
     assert calls["config"].api_key == "sk-test"
     assert calls["artifacts"].output_dir == Path(tmp_path)
+
+
+def test_media_html_dependency_accepts_template_family(monkeypatch, tmp_path):
+    calls = {}
+
+    def fake_generate_with_images(outline, colors, images, charts, output_path, theme_family=""):
+        calls["theme_family"] = theme_family
+        Path(output_path).write_text("<html></html>", encoding="utf-8")
+
+    monkeypatch.setattr(main, "generate_slides_html_with_images", fake_generate_with_images)
+    monkeypatch.setattr(main, "_open_file", lambda path: None)
+
+    deps = main._create_dependencies(error_tracker=object())
+    output_path = tmp_path / "slides.html"
+
+    deps.generate_slides_html_with_images(
+        object(),
+        {},
+        [],
+        [],
+        output_path=str(output_path),
+        theme_family="data",
+    )
+
+    assert calls["theme_family"] == "data"
+    assert output_path.exists()
+
+
+def test_plain_html_dependency_accepts_template_family(monkeypatch, tmp_path):
+    calls = {}
+
+    def fake_generate_plain(outline, colors, output_path, theme_family=""):
+        calls["theme_family"] = theme_family
+        Path(output_path).write_text("<html></html>", encoding="utf-8")
+
+    monkeypatch.setattr(main, "generate_slides_html", fake_generate_plain)
+    monkeypatch.setattr(main, "_open_file", lambda path: None)
+
+    deps = main._create_dependencies(error_tracker=object())
+    output_path = tmp_path / "slides.html"
+
+    deps.generate_slides_html(
+        object(),
+        {},
+        output_path=str(output_path),
+        theme_family="technical",
+    )
+
+    assert calls["theme_family"] == "technical"
+    assert output_path.exists()

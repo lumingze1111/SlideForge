@@ -100,13 +100,20 @@ def _create_dependencies(error_tracker: ErrorTracker) -> GenerationDependencies:
             print(f"\n  🎨 正在增强幻灯片内容（{' + '.join(features)}）...")
         return ContentEnhancementAgent(error_tracker=error_tracker, **kwargs)
 
-    def generate_slides_html_with_progress(outline, colors, images, charts, output_path: str):
-        generate_slides_html_with_images(outline, colors, images, charts, output_path=output_path)
+    def generate_slides_html_with_progress(outline, colors, images, charts, output_path: str, theme_family: str = ""):
+        generate_slides_html_with_images(
+            outline,
+            colors,
+            images,
+            charts,
+            output_path=output_path,
+            theme_family=theme_family,
+        )
         print(f"  ✓ HTML 幻灯片：{output_path}")
         _open_file(Path(output_path))
 
-    def generate_plain_html_with_progress(outline, colors, output_path: str):
-        generate_slides_html(outline, colors, output_path=output_path)
+    def generate_plain_html_with_progress(outline, colors, output_path: str, theme_family: str = ""):
+        generate_slides_html(outline, colors, output_path=output_path, theme_family=theme_family)
         print(f"  ✓ HTML 幻灯片：{output_path}")
         _open_file(Path(output_path))
 
