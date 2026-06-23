@@ -488,6 +488,7 @@ def generate_slides_html(
     outline: PresentationOutline,
     colors: dict,
     output_path: str = "slides.html",
+    theme_family: str = "",
 ) -> str:
     """将幻灯片大纲渲染为完整 HTML 文件（每页 1280×720）"""
     total = len(outline.slides)
@@ -495,7 +496,7 @@ def generate_slides_html(
     # 渲染幻灯片（添加 data-pptx-slide 和 data-notes 供 PPTX 转换引擎使用）
     slides_parts = []
     for i, s in enumerate(outline.slides):
-        template_name = _select_template_name(s, i + 1, total)
+        template_name = _select_template_name(s, i + 1, total, theme_family=theme_family)
         slide_html = render_slide_html(s, colors, i + 1, total, template_name=template_name)
         # 在 class="slide" 后添加 data-pptx-slide
         slide_html = slide_html.replace('<div class="slide"', '<div class="slide" data-pptx-slide', 1)
@@ -559,6 +560,7 @@ def generate_slides_html_with_images(
     image_suggestions: list,
     chart_suggestions: list = None,
     output_path: str = "slides.html",
+    theme_family: str = "",
 ) -> str:
     """
     将幻灯片大纲渲染为完整 HTML 文件（智能排版，支持图片和图表）
@@ -602,6 +604,7 @@ def generate_slides_html_with_images(
             total,
             has_image=has_image,
             has_chart=has_chart,
+            theme_family=theme_family,
         )
         slide_html = render_slide_html(s, colors, i + 1, total, template_name=template_name)
         if layout.content_width_pct < 0.95:

@@ -20,6 +20,7 @@ def test_main_delegates_to_generation_pipeline(monkeypatch, tmp_path):
                 topic=topic,
                 color_name="测试蓝",
                 outline_name="两页结构",
+                template_family="technical",
                 html_path=tmp_path / "slides.html",
                 pptx_path=tmp_path / "slides.pptx",
                 image_count=0,

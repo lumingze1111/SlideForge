@@ -28,6 +28,7 @@ from slideforge.agents.html_generator import (
 )
 from slideforge.agents.outline_proposal import generate_outline_proposals, pick_outline_proposal
 from slideforge.agents.propose_agent import pick_proposal, run_propose_agent
+from slideforge.agents.layout_templates import TEMPLATE_FAMILIES
 from slideforge.agents.topic_analyzer import analyze_topic, print_suggestion
 from slideforge.error_tracking import ErrorReporter, ErrorTracker, set_error_tracker
 from slideforge.pipeline import (
@@ -63,6 +64,18 @@ def _create_dependencies(error_tracker: ErrorTracker) -> GenerationDependencies:
         proposals = generate_outline_proposals(llm, topic=topic, audience=audience, pages=pages)
         print(f"  ✓ 生成了 {len(proposals.proposals)} 套大纲方案")
         return proposals
+
+    def pick_template_family_with_progress(topic: str, suggestion, color, outline):
+        from slideforge.preview_generator import generate_template_family_preview_html, wait_for_selection
+
+        print("\n  🧩 正在准备模板风格选择...")
+        preview_path = generate_template_family_preview_html(TEMPLATE_FAMILIES, topic)
+        print(f"  💡 模板风格预览页面已生成：{preview_path}")
+        _open_file(Path(preview_path))
+        idx = wait_for_selection(len(TEMPLATE_FAMILIES))
+        chosen = TEMPLATE_FAMILIES[idx]
+        print(f"\n  ✓ 已选择模板风格 [{idx + 1}]：{chosen.name}")
+        return chosen.key
 
     def generate_outline_with_progress(llm, topic: str, audience: str, pages: int, key_messages, research_facts):
         print(f"\n  📝 正在生成幻灯片详细内容（{pages} 页）...")
@@ -136,6 +149,7 @@ def _create_dependencies(error_tracker: ErrorTracker) -> GenerationDependencies:
         pick_color=pick_proposal,
         generate_outline_proposals=generate_outline_proposals_with_progress,
         pick_outline=pick_outline_proposal,
+        pick_template_family=pick_template_family_with_progress,
         generate_outline=generate_outline_with_progress,
         create_enhancement_agent=create_enhancement_agent,
         generate_slides_html=generate_plain_html_with_progress,
@@ -200,6 +214,7 @@ def main() -> None:
     print(f"  主题：{result.topic}")
     print(f"  配色方案：{result.color_name}")
     print(f"  大纲结构：{result.outline_name}")
+    print(f"  模板风格：{result.template_family}")
     if result.image_count:
         print(f"  插入图片：{result.image_count} 张")
     if result.chart_count:

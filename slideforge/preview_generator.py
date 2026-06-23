@@ -123,6 +123,192 @@ def generate_preview_html(
     return str(output_path.absolute())
 
 
+def generate_template_family_preview_html(
+    families: List,
+    topic: str,
+    output_path: str = None,
+    server_port: int = 7788,
+) -> str:
+    """生成模板风格选择页。"""
+    if output_path is None:
+        output_path = "output/slideforge_template_preview.html"
+
+    cards = []
+    for index, family in enumerate(families):
+        preview_items = "".join(
+            f'<div class="template-pill">{template}</div>'
+            for template in family.preview_templates
+        )
+        cards.append(
+            f"""
+<div class="slide-card template-card" data-index="{index}" onclick="selectCard(this)">
+    <div class="selected-badge">✓ 已选择</div>
+    <div class="slide-meta">
+        <div class="slide-title">{index + 1}. {family.name}</div>
+        <div class="slide-badge">{family.key}</div>
+    </div>
+    <div class="template-preview">
+        <div class="template-mini-slide template-{family.key}">
+            <div class="mini-title"></div>
+            <div class="mini-body">
+                <div></div><div></div><div></div>
+            </div>
+            <div class="mini-panel"></div>
+        </div>
+        <div class="template-copy">
+            <h3>{family.name}</h3>
+            <p>{family.description}</p>
+            <div class="template-pills">{preview_items}</div>
+        </div>
+    </div>
+</div>
+"""
+        )
+
+    html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SlideForge 模板风格选择</title>
+<style>
+{_shared_selection_css()}
+.template-card {{ padding: 24px; }}
+.template-preview {{ display:grid; grid-template-columns: 360px 1fr; gap: 28px; align-items:center; }}
+.template-mini-slide {{
+    width: 360px; aspect-ratio: 16 / 9; border-radius: 10px; padding: 22px;
+    display:grid; grid-template-rows: 28px 1fr; grid-template-columns: 1fr 120px;
+    gap: 16px; border: 1px solid rgba(255,255,255,0.14); box-shadow: 0 12px 32px rgba(0,0,0,0.28);
+}}
+.mini-title {{ grid-column: 1 / 3; width: 58%; border-radius: 4px; background: rgba(255,255,255,0.88); }}
+.mini-body {{ display:flex; flex-direction:column; gap: 10px; justify-content:center; }}
+.mini-body div {{ height: 14px; border-radius: 4px; background: rgba(255,255,255,0.58); }}
+.mini-body div:nth-child(2) {{ width: 82%; }}
+.mini-body div:nth-child(3) {{ width: 68%; }}
+.mini-panel {{ border-radius: 8px; background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.18); }}
+.template-business {{ background: linear-gradient(135deg, #0f172a, #1e3a8a); }}
+.template-story {{ background: linear-gradient(135deg, #7c2d12, #f97316); }}
+.template-technical {{ background: linear-gradient(135deg, #111827, #0891b2); }}
+.template-data {{ background: linear-gradient(135deg, #052e16, #16a34a); }}
+.template-minimal {{ background: linear-gradient(135deg, #f8fafc, #cbd5e1); }}
+.template-minimal .mini-title, .template-minimal .mini-body div {{ background: #334155; }}
+.template-copy h3 {{ font-size: 24px; color: #fff; margin-bottom: 10px; }}
+.template-copy p {{ font-size: 15px; color: #9ca3af; line-height: 1.7; margin-bottom: 18px; }}
+.template-pills {{ display:flex; flex-wrap:wrap; gap: 8px; }}
+.template-pill {{ padding: 6px 10px; border-radius: 8px; background:#374151; color:#d1d5db; font-size:12px; }}
+@media (max-width: 820px) {{
+    .template-preview {{ grid-template-columns: 1fr; }}
+    .template-mini-slide {{ width: 100%; }}
+}}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🧩 SlideForge 模板风格选择</h1>
+<p class="subtitle">主题：{topic}。选择一套模板风格，后续页面会按该风格自动匹配具体布局。</p>
+{''.join(cards)}
+</div>
+{_selection_footer(server_port, confirm_label="确认模板风格")}
+</body>
+</html>
+"""
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(html, encoding="utf-8")
+    return str(output_path.absolute())
+
+
+def _shared_selection_css() -> str:
+    return """
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #111827;
+    color: #e0e0e0;
+    padding: 40px 20px 120px;
+}
+.container { max-width: 1180px; margin: 0 auto; }
+h1 { text-align: center; font-size: 28px; margin-bottom: 8px; color: #fff; }
+.subtitle { text-align: center; font-size: 14px; color: #9ca3af; margin-bottom: 34px; }
+.slide-card {
+    background: #1f2937; border-radius: 16px; margin-bottom: 24px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4); border: 3px solid transparent;
+    cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+    position: relative;
+}
+.slide-card:hover { border-color: #4b83ff; transform: translateY(-2px); box-shadow: 0 8px 32px rgba(75,131,255,0.25); }
+.slide-card.selected { border-color: #4ade80; box-shadow: 0 0 0 4px rgba(74,222,128,0.2), 0 8px 32px rgba(0,0,0,0.5); }
+.selected-badge {
+    display: none; position: absolute; top: 16px; right: 16px; background: #4ade80;
+    color: #111827; font-weight: 700; font-size: 13px; padding: 4px 14px;
+    border-radius: 20px; z-index: 10;
+}
+.slide-card.selected .selected-badge { display: inline-block; }
+.slide-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+.slide-title { font-size: 20px; font-weight: 600; color: #fff; }
+.slide-badge { display: inline-block; padding: 4px 14px; background: #374151; color: #9ca3af; border-radius: 20px; font-size: 13px; }
+.confirm-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; background: #1f2937;
+    border-top: 1px solid #374151; padding: 16px 40px; display: flex;
+    align-items: center; justify-content: space-between; z-index: 100;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+}
+.confirm-hint { font-size: 14px; color: #9ca3af; }
+.confirm-hint span { color: #4ade80; font-weight: 600; }
+.confirm-btn {
+    background: #4ade80; color: #111827; border: none; padding: 12px 40px;
+    border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+}
+.confirm-btn:hover { background: #22c55e; transform: scale(1.03); }
+.confirm-btn:disabled { background: #374151; color: #6b7280; cursor: not-allowed; transform: none; }
+"""
+
+
+def _selection_footer(port: int, confirm_label: str = "确认方案") -> str:
+    return f"""
+<div class="confirm-bar">
+    <div class="confirm-hint" id="hint">请先点击上方任意方案卡片选择</div>
+    <button class="confirm-btn" id="confirmBtn" disabled onclick="confirmSelection()">{confirm_label}</button>
+</div>
+<script>
+const PORT = {port};
+let selectedIndex = null;
+function selectCard(el) {{
+    document.querySelectorAll('.slide-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    selectedIndex = parseInt(el.dataset.index);
+    const title = el.querySelector('.slide-title').textContent.trim();
+    document.getElementById('hint').innerHTML = '已选择：<span>' + title + '</span>';
+    document.getElementById('confirmBtn').disabled = false;
+}}
+function confirmSelection() {{
+    if (selectedIndex === null) return;
+    const btn = document.getElementById('confirmBtn');
+    btn.disabled = true;
+    btn.textContent = '提交中…';
+    fetch('http://localhost:' + PORT + '/select', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{index: selectedIndex}})
+    }})
+    .then(r => r.json())
+    .then(() => {{
+        btn.textContent = '✓ 已确认，正在继续生成…';
+        btn.style.background = '#22c55e';
+        document.getElementById('hint').innerHTML = '<span>选择已提交！窗口即将关闭…</span>';
+        setTimeout(() => window.close(), 800);
+    }})
+    .catch(err => {{
+        btn.disabled = false;
+        btn.textContent = '{confirm_label}';
+        alert('提交失败：' + err.message);
+    }});
+}}
+</script>
+"""
+
+
 def _html_header(port: int) -> str:
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">

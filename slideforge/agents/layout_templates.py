@@ -31,6 +31,48 @@ class TemplateContext:
     theme_family: str = ""
 
 
+@dataclass(frozen=True)
+class TemplateFamily:
+    key: str
+    name: str
+    description: str
+    preview_templates: tuple[str, ...]
+
+
+TEMPLATE_FAMILIES: tuple[TemplateFamily, ...] = (
+    TemplateFamily(
+        key="business",
+        name="稳重商务",
+        description="适合汇报、战略、项目复盘，强调清晰层级和稳健信息密度。",
+        preview_templates=("content-classic", "two-column-comparison", "data-kpi-strip"),
+    ),
+    TemplateFamily(
+        key="story",
+        name="故事叙事",
+        description="适合人物、品牌、案例和成长线索，强调开场冲击和章节节奏。",
+        preview_templates=("cover-split-hero", "content-left-rail", "closing-quote"),
+    ),
+    TemplateFamily(
+        key="technical",
+        name="技术科普",
+        description="适合原理、架构、产品技术和方案讲解，强调结构化拆解。",
+        preview_templates=("section-left-rail", "content-left-rail", "two-column-asymmetric"),
+    ),
+    TemplateFamily(
+        key="data",
+        name="数据洞察",
+        description="适合数据分析、趋势判断和指标汇报，强调数字与图表优先。",
+        preview_templates=("data-big-stat", "data-chart-forward", "content-insight-cards"),
+    ),
+    TemplateFamily(
+        key="minimal",
+        name="极简通用",
+        description="适合不确定风格的通用演示，保留更多留白并降低视觉风险。",
+        preview_templates=("cover-centered", "section-centered", "closing-centered"),
+    ),
+)
+
+
 TEMPLATES: dict[str, tuple[LayoutTemplate, ...]] = {
     "cover": (
         LayoutTemplate("cover-centered", "cover", theme_tags=("minimal", "business")),

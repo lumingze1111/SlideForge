@@ -14,6 +14,7 @@ class Calls:
     html_with_images: int = 0
     html_plain: int = 0
     converted: int = 0
+    picked_template: int = 0
 
 
 def test_generation_pipeline_runs_core_flow_with_plain_html(tmp_path):
@@ -38,8 +39,17 @@ def test_generation_pipeline_runs_core_flow_with_plain_html(tmp_path):
         ],
     )
 
-    def fake_generate_html(outline_arg, colors_arg, output_path):
+    def fake_pick_template_family(topic, suggestion_arg, color_arg, outline_arg):
+        calls.picked_template += 1
+        assert topic == "测试主题"
+        assert suggestion_arg is suggestion
+        assert color_arg is color
+        assert outline_arg is chosen_outline
+        return "technical"
+
+    def fake_generate_html(outline_arg, colors_arg, output_path, theme_family=""):
         calls.html_plain += 1
+        assert theme_family == "technical"
         Path(output_path).write_text("<html></html>", encoding="utf-8")
 
     def fake_convert(html_path, pptx_path):
@@ -53,6 +63,7 @@ def test_generation_pipeline_runs_core_flow_with_plain_html(tmp_path):
         pick_color=lambda proposals, topic: color,
         generate_outline_proposals=lambda llm, topic, audience, pages: SimpleNamespace(proposals=[chosen_outline]),
         pick_outline=lambda proposals, topic: chosen_outline,
+        pick_template_family=fake_pick_template_family,
         generate_outline=lambda llm, topic, audience, pages, key_messages, research_facts: outline,
         create_enhancement_agent=lambda **kwargs: None,
         generate_slides_html=fake_generate_html,
@@ -75,3 +86,5 @@ def test_generation_pipeline_runs_core_flow_with_plain_html(tmp_path):
     assert calls.html_plain == 1
     assert calls.html_with_images == 0
     assert calls.converted == 1
+    assert calls.picked_template == 1
+    assert result.template_family == "technical"
