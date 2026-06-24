@@ -103,3 +103,37 @@ def test_generate_slides_html_with_media_uses_media_templates(tmp_path):
     assert 'data-layout-template="content-right-visual"' in html
     assert 'data-layout-template="data-chart-forward"' in html
     assert html.count("data-pptx-slide") == 2
+
+
+def test_generate_slides_html_with_empty_chart_uses_fallback_visual(tmp_path):
+    class ChartSuggestion:
+        slide_index = 0
+        layout = "fullpage"
+        chart_path = None
+        native_config = {}
+
+    outline = PresentationOutline(
+        total_pages=1,
+        slides=[
+            SlideContent(
+                slide_type="data",
+                title="Data",
+                key_stat="402",
+                key_stat_label="Single-season threes",
+                bullets=["A", "B", "C"],
+            ),
+        ],
+    )
+
+    path = generate_slides_html_with_images(
+        outline,
+        COLORS,
+        image_suggestions=[],
+        chart_suggestions=[ChartSuggestion()],
+        output_path=str(tmp_path / "slides.html"),
+    )
+    html = Path(path).read_text(encoding="utf-8")
+
+    assert "Chart Area" not in html
+    assert "Single-season threes" in html
+    assert "data-chart-fallback" in html

@@ -11,7 +11,7 @@ matplotlib.use('Agg')  # 无 GUI 后端
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
 import seaborn as sns
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 def _setup_chinese_font():
@@ -85,6 +85,57 @@ class ChartData(BaseModel):
     data: Dict[str, Any]
     data_source: str
     timestamp: Optional[str] = None
+
+    @field_validator("data", mode="before")
+    @classmethod
+    def normalize_row_list(cls, value):
+        if not isinstance(value, list):
+            return value
+        rows = [row for row in value if isinstance(row, dict)]
+        if not rows:
+            return {"values": value}
+
+        headers = list(rows[0].keys())
+        category_key = next(
+            (key for key in ("category", "name", "label", "维度", "指标", "项目", "年份", "year") if key in headers),
+            headers[0],
+        )
+
+        def number_or_none(raw):
+            if isinstance(raw, (int, float)):
+                return raw
+            if isinstance(raw, str):
+                cleaned = raw.replace(",", "").replace("%", "").strip()
+                try:
+                    return float(cleaned)
+                except ValueError:
+                    return None
+            return None
+
+        numeric_keys = [
+            key for key in headers
+            if key != category_key and any(number_or_none(row.get(key)) is not None for row in rows)
+        ]
+        categories = [str(row.get(category_key, "")) for row in rows]
+        normalized = {
+            "categories": categories,
+            "headers": headers,
+            "rows": [[row.get(header, "") for header in headers] for row in rows],
+        }
+        if numeric_keys:
+            normalized["series"] = [
+                {
+                    "name": key,
+                    "values": [
+                        number_or_none(row.get(key)) if number_or_none(row.get(key)) is not None else 0
+                        for row in rows
+                    ],
+                }
+                for key in numeric_keys
+            ]
+            if len(numeric_keys) == 1:
+                normalized["values"] = normalized["series"][0]["values"]
+        return normalized
 
 
 class ChartConfig(BaseModel):

@@ -93,25 +93,21 @@ def test_plain_html_dependency_accepts_template_family(monkeypatch, tmp_path):
     assert output_path.exists()
 
 
-def test_convert_fallback_uses_screenshot_mode(monkeypatch, tmp_path):
+def test_convert_uses_screenshot_mode_by_default(monkeypatch, tmp_path):
     calls = {}
 
-    class FakeResult:
-        returncode = 1
-
-    def fake_run(args, capture_output, text):
-        calls["llm_args"] = args
-        return FakeResult()
-
     def fake_convert(html_path, pptx_path, **kwargs):
-        calls["fallback"] = {
+        calls["convert"] = {
             "html_path": html_path,
             "pptx_path": pptx_path,
             "kwargs": kwargs,
         }
         Path(pptx_path).write_bytes(b"pptx")
 
-    monkeypatch.setattr(main.subprocess, "run", fake_run)
+    def fail_if_llm_direct_runs(*args, **kwargs):
+        raise AssertionError("LLM direct conversion should not run in the default export path")
+
+    monkeypatch.setattr(main.subprocess, "run", fail_if_llm_direct_runs)
     monkeypatch.setattr("slideforge.pptx_converter.convert_html_to_pptx", fake_convert)
     monkeypatch.setattr(main, "_open_file", lambda path: None)
 
@@ -122,8 +118,8 @@ def test_convert_fallback_uses_screenshot_mode(monkeypatch, tmp_path):
     deps = main._create_dependencies(error_tracker=object())
     result = deps.convert_html_to_pptx(str(html_path), str(pptx_path))
 
-    assert result == 1
-    assert calls["fallback"]["html_path"] == str(html_path)
-    assert calls["fallback"]["pptx_path"] == str(pptx_path)
-    assert calls["fallback"]["kwargs"]["screenshot_mode"] is True
-    assert calls["fallback"]["kwargs"]["validate_gradients"] is False
+    assert result == 0
+    assert calls["convert"]["html_path"] == str(html_path)
+    assert calls["convert"]["pptx_path"] == str(pptx_path)
+    assert calls["convert"]["kwargs"]["screenshot_mode"] is True
+    assert calls["convert"]["kwargs"]["validate_gradients"] is False

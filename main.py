@@ -118,27 +118,19 @@ def _create_dependencies(error_tracker: ErrorTracker) -> GenerationDependencies:
         _open_file(Path(output_path))
 
     def convert_with_fallback(html_path: str, pptx_path: str) -> int:
-        print("\n  📊 正在导出 PPTX（LLM 直接渲染）...")
-        llm_convert_script = str(Path(__file__).parent / "tools" / "llm_direct_convert.py")
-        result = subprocess.run(
-            [sys.executable, llm_convert_script, "--html", html_path, "--output", pptx_path],
-            capture_output=False,
-            text=True,
-        )
-        if result.returncode != 0:
-            print(f"  ⚠ LLM 直接渲染失败 (exit {result.returncode})，回退到截图高保真流水线...")
-            from slideforge.pptx_converter import convert_html_to_pptx
+        print("\n  📊 正在导出 PPTX（截图高保真流水线）...")
+        from slideforge.pptx_converter import convert_html_to_pptx
 
-            convert_html_to_pptx(
-                html_path,
-                pptx_path,
-                verbose=True,
-                screenshot_mode=True,
-                validate_gradients=False,
-            )
+        convert_html_to_pptx(
+            html_path,
+            pptx_path,
+            verbose=True,
+            screenshot_mode=True,
+            validate_gradients=False,
+        )
         print(f"  ✓ PPTX 已生成：{pptx_path}")
         _open_file(Path(pptx_path))
-        return result.returncode
+        return 0
 
     def create_error_report(topic: str, total_slides: int) -> None:
         try:

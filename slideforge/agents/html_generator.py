@@ -618,7 +618,7 @@ def generate_slides_html_with_images(
         # 插入图表
         if layout.chart_slot and has_chart:
             chart = charts_by_slide[i][0]
-            slide_html = _insert_chart_at_slot(slide_html, chart, layout.chart_slot, colors)
+            slide_html = _insert_chart_at_slot(slide_html, chart, layout.chart_slot, colors, slide=s)
 
         # data-pptx-slide 标记
         slide_html = slide_html.replace('<div class="slide"', '<div class="slide" data-pptx-slide', 1)
@@ -765,7 +765,7 @@ def _insert_image_at_slot(slide_html: str, img, slot) -> str:
     return slide_html
 
 
-def _insert_chart_at_slot(slide_html: str, chart, slot, colors: dict) -> str:
+def _insert_chart_at_slot(slide_html: str, chart, slot, colors: dict, slide=None) -> str:
     """在指定插槽位置插入图表"""
     import base64
     from pathlib import Path
@@ -806,11 +806,49 @@ def _insert_chart_at_slot(slide_html: str, chart, slot, colors: dict) -> str:
         elif chart_type == "table":
             chart_html = _render_table_chart_html(config, slot, colors)
 
+    if not chart_html and slide is not None:
+        chart_html = _render_fallback_chart_html(slide, slot, colors)
+
     if chart_html:
+        slide_html = slide_html.replace('>Chart Area</div>', '></div>', 1)
         last_close = slide_html.rfind('</div>')
         slide_html = slide_html[:last_close] + chart_html + slide_html[last_close:]
 
     return slide_html
+
+
+def _render_fallback_chart_html(slide: SlideContent, slot, colors: dict) -> str:
+    """Render a small deterministic visual when chart generation yielded no config."""
+    import re
+
+    bullets = [item for item in (slide.bullets or []) if item]
+    labels = bullets[:4] or [slide.key_stat_label or slide.title]
+
+    def first_number(text: str) -> float | None:
+        match = re.search(r"[-+]?\d+(?:,\d{3})*(?:\.\d+)?", text or "")
+        if not match:
+            return None
+        try:
+            return float(match.group(0).replace(",", ""))
+        except ValueError:
+            return None
+
+    values = [first_number(item) for item in labels]
+    if not any(value is not None and value > 0 for value in values):
+        values = [100 - index * 14 for index in range(len(labels))]
+    else:
+        values = [value if value is not None and value > 0 else 1 for value in values]
+
+    config = {
+        "title": slide.key_stat_label or slide.title,
+        "categories": [
+            label if len(label) <= 14 else label[:13] + "..."
+            for label in labels
+        ],
+        "series": [{"name": slide.key_stat or "Value", "values": values}],
+    }
+    html = _render_bar_chart_html(config, slot, colors)
+    return html.replace("<div style=", '<div data-chart-fallback="true" style=', 1)
 
 
 # ──────────────────────────────────────────────────────────────────────
